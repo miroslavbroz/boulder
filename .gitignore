@@ -1,0 +1,18 @@
+# vim temporary files
+*.swp
+*.f_ORIG*
+*.f90_ORIG*
+
+# object files
+*.o
+*.mod
+
+# binary files
+main/boulder
+main/chi2
+main/gen_ic
+main/gen_sfd
+main/gen_sfd4
+main/gen_sfd5
+main/simplex
+

@@ -1,0 +1,41 @@
+        write(*,*) 'Pint(', i, ',', j, ') = ', Pint(i,j)
+        write(*,*) 'vrel(', i, ',', j, ') = ', vrel(i,j)
+
+             if (trans_m(j,k).gt.0.d0) then
+               write(*,*) 'trans_m(',j,',',k,') = ', trans_m(j,k)
+               write(*,*) 'n = ', n
+               stop
+             endif
+
+c      integer i
+c      save i
+c      data i /1/
+
+c           write(*,*) yarko_D(1,j),yarko_D(yarko_n(j),j),
+c     :       ' sarr(',j,',',jj,') = ',sarr(j,jj),
+c     :       ' marr(',j,',',jj,') = ',marr(j,jj)
+c           fdec = dt/tau ! this is TOO coarse approximation of the decay :-(
+
+           if (fdec.gt.1.d0) then
+             write(*,*) '# yarko_decay: fractional decay fdec = ', fdec,
+     :         '.gt. 1!'
+c           write(*,*) 'fdec = ', fdec, ' dt = ', dt, ' tau = ' , tau,
+c     :       'sarr(',j,',',jj,') = ', sarr(j,jj)
+             fdec = 1.d0
+           endif
+           if (fdec.lt.0.d0) then
+             write(*,*) '# yarko_decay: fractional decay fdec = ', fdec,
+     :         '.lt. 0!'
+             fdec = 0.d0
+           endif
+
+c           if (j==1) then
+c             write(*,*) 'fdec = ',i,j,jj,2.*sarr(j,jj)/100.d0,
+c     :         dt/1.e6,tau/1.e6,dt/tau,fdec
+c           endif
+
+c           npop(j,jj,1)=npop(j,jj,1)*(1.d0-fdec)
+
+c      if (i==20) stop
+c      i = i+1
+

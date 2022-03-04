@@ -1,0 +1,1793 @@
+cc   code BOULDER
+cc
+cc   simulates the accretion and collisional fragmentation of planetesimals
+cc   multi-anulus version
+cc
+cc   current version: Morby Jan 27, 2008
+cc
+cc   this version includes dynamics of KBO binaries
+cc   version Jul 26, 2010 by David V
+cc
+
+      include 'ucrm3.4.inc'   ! all parameters file
+      
+c mass array, size array
+      real*8 marr(Manuli,BINNEG:BINMAX),sarr(Manuli,BINNEG:BINMAX) 
+c total mass array
+      real*8 mpop(Manuli,0:BINMAX)
+c number of particles array
+      real*8 npop(Manuli,BINNEG:BINMAX,Ndata)! the Ndata vector is for 
+c additional data. Ndata=1 is the populaiton in each bin. the only
+c currently used orbital parameters arrays
+      real*8 ecc(Manuli,BINNEG:BINMAX),inc(Manuli,BINNEG:BINMAX)
+      real*8 axe(Manuli),delta_a(Manuli)
+c number of anuli, mass bins, positive and negative
+      integer Nanuli,nbins(Manuli),nbinneg(Manuli)
+c bin number for isolated objects (WS93)
+      integer l_iso(Manuli),l_iso_tmp
+c changes in npop and mpop
+      real*8 npop_change(2,0:BINMAX,Ndata)
+      real*8 mpop_change(2,0:BINMAX)
+      real*8 npop_change_tot(Manuli,0:BINMAX,Ndata)
+      real*8 mpop_change_tot(Manuli,0:BINMAX)
+c changes in eccentricity and inclination
+      real*8 fe_tot(Manuli,0:BINMAX),fi_tot(Manuli,0:BINMAX)
+      real*8 fe(2,0:BINMAX),fi(2,0:BINMAX)
+c timesteps for the different parts of the algorithm
+      real*8 dtcol,dt_est,dtstern,dtstern_tmp,dt_up
+
+c auxiliary stuff
+      integer i,j,jj,i1st,iwr,ifail,nint,npop_orig
+      real*8 total_mass_new,total_mass_old,fme
+      real*8 tend,t0,dtout,time,tout
+      real*8 t2,t1,te,fdec,npart1(Manuli),npart2(Manuli)
+      real*8 npart_init(Manuli,BINNEG:BINMAX)
+      real*8 npart_end(Manuli,BINNEG:BINMAX)
+      integer i1stcol,ierr
+c
+c bottke changes
+      integer ios
+      character*80 boulder_name, outname
+
+c for KBO binaries runs
+      integer nam,nem,nindmax
+      real*8 const1,const2
+      parameter (nam=250,nem=250,nindmax=100001)
+      parameter (const1=1.154700538d0,const2=0.912870929d0)
+      real*8 xi,bin_frac_ini,a_bin_max,e_bin_max,da_bin,de_bin
+      real*8 ran3,a_rand,e_rand,loga,loga1,loga2,e_form_max,dna,dne
+      real*8 frac_bin,sarr_bin(Manuli,BINMAX),marr_bin(Manuli,BINMAX)
+      real*8 ncoll,vcoll,fg,ncoll_tp
+      real*8 mlr,mej,mlf,qf,mtot,a_sel,e_sel,daa_imp_max,daa_imp
+      real*8 de_imp_max,de_imp,frac_imp
+      real*8 v_orb_min,r_hill,v_orb,counter
+      real*8 a_ind(Manuli,BINMAX,nindmax),e_ind(Manuli,BINMAX,nindmax)
+      integer iflag(Manuli,BINMAX),numbintres,istat(nindmax)
+      integer a_bin(Manuli,BINMAX,nam),e_bin(Manuli,BINMAX,nem)
+      integer n_bin(Manuli,BINMAX),ii1,ii2,ir,is
+      integer k,kmax,ii,na,ne,i_bin_1,i_bin_2,idum0,ncount
+      character*80 outnamebin
+c ...................................................................
+ccc
+c job parameters from 'kbo_bin.in' file
+ccc
+      open(1,file='boulder.in',status='old')
+c (a) input SFDs filename
+      write (6, '('' Enter BOULDER input file > ''$)')
+      read  (1, *, iostat = ios) boulder_name
+      if (ios .ne. 0) then
+       write (6, *) ' Error 1 ', ios, ' Try again '
+       stop
+      endif
+c (b) output SFDs filename
+      write (6, '('' Enter BOULDER output file > ''$)')
+      read  (1, *, iostat = ios) outname
+      if (ios .ne. 0) then
+       write (6, *) ' Error 2 ', ios, ' Try again '
+       stop
+      endif
+c (c) random seed
+      read (1, *, iostat = ios) idum0
+      if ((ios .ne. 0).or.(idum0.ge.0)) then
+       write (6, *) ' Error reading (negative) idum0'
+       stop
+      endif
+      write(*,*) '# idum0 = ', idum0
+      close(1)
+c ... some initializations and checks on input/output files
+      i1st=0
+c      idum0=-1357531
+      xi=ran3(idum0)
+      write(*,*) "# xi = ", xi
+      write(*,*) "# idum0 = ", idum0
+
+      open(unit=1,file=outname,status='new',iostat = ios)
+      if (ios .ne. 0) then
+       write (6, *) ' Pre-existing output file!'
+       write (6, *) ' Make sure you want to use it'
+       stop
+      endif
+      close(1)
+
+ccc
+c  Read data files .......................................(begin) 
+ccc
+c (a) initial populations
+      open(unit=1,file=boulder_name,status='old', iostat = ios)
+      if (ios .ne. 0) then
+       write (6, *) ' No input SFD file, error ', ios, ' Try again '
+       stop
+      endif
+c      call skip(1)
+      read(1,*)Nanuli
+      do i=1,Nanuli
+       read(1,*)axe(i),delta_a(i),nbins(i),marr(i,0),mpop(i,0)
+       do jj=1,nbins(i)
+        read(1,*)marr(i,jj),sarr(i,jj),mpop(i,jj)
+        read(1,*)ecc(i,jj),inc(i,jj)
+        npop(i,jj,1)=mpop(i,jj)/marr(i,jj)
+       enddo
+       ecc(i,0)=ecc(i,1)
+       inc(i,0)=inc(i,1)
+      enddo
+      close(1)
+c (b) init time, final time, timestep etc.
+      open(unit=1,file='param.dat',status='old')
+      call skip (1)
+      read(1,*)dtcol,t0,tend,dtout
+      close(1)
+c (c) physical parameters for disruptions
+      open(unit=1,file='phys_par.dat',status='old')
+      call skip (1)
+      do j=1,Nanuli
+       read(1,*)rho(j),
+     $          Q0(j),a_benz(j),BB(j),b_benz(j),rho_bas(j),q_fact(j)
+      enddo
+      close(1)
+c (d) collision probabilities and relative velocities
+      open(unit=1,file='collprob.dat',status='old')
+      call skip(1)
+      do i=1,Nanuli
+       do j=1,Nanuli
+        read(1,*)Pint(i,j),vrel(i,j)
+       enddo
+      enddo
+      close(1)
+c (e) dynamical decay data
+      open(unit=11,file='pop_decay.dat',status='old')
+      call skip(11)
+      read(11,*,iostat=ierr)t1,(npart1(j),j=1,Nanuli)
+      if(ierr.ne.0) then
+       write(*,*)'error reading pop_decay.dat'
+       write(*,*)'probably, not enough populations are input'
+       stop
+      endif
+      if(t1.gt.t0)then
+       write(*,*)'firt time in pop_decay.dat is too large'
+       write(*,*)t0,t1
+       stop
+      endif
+      t2=t1
+      do while (t2.le.t0)  ! search until the first t2 gt t0 is found
+       read(11,*,iostat=ierr)t2,(npart2(j),j=1,Nanuli)
+       if(ierr.ne.0) then
+        write(*,*)'error reading pop_decay.dat'
+        write(*,*)'file ended too early?'
+        stop
+       endif
+       if(t2.le.t0)then
+        t1=t2          ! getting the largest time that is le t0
+        do j=1,Nanuli
+         npart1(j)=npart2(j)
+        enddo
+       endif
+      enddo
+! now do the interpolation to find population at t0
+      do j=1,Nanuli
+       do jj=BINNEG,BINMAX
+        npart_init(j,jj)=npart1(j)+(npart2(j)-npart1(j))/(t2-t1)*(t0-t1)
+       enddo
+      enddo
+! check the input, generate empty arrays etc.
+      do j = 1,Nanuli
+       call ucrm_update_arrs(i1st,j,nbinneg(j),nbins(j),marr,sarr,
+     &                       mpop,npop,axe,delta_a,ecc,inc)
+      enddo
+      total_mass_new = 0.d0
+      do j = 1,Nanuli
+       do jj = 0,nbins(j) 
+        total_mass_new = total_mass_new + mpop(j,jj)
+       enddo
+      enddo
+ccc
+c  Read data files ...........................................(end)
+ccc
+
+ccc
+c Output of the initial condition ..........................(begin)
+ccc
+c (a) output SFDs
+      open(unit=2,file=outname,position='append')
+ccc      write(2,*)t0,total_mass_new
+ccc      write(2,*)Nanuli
+      do i=1,Nanuli
+ccc       write(2,*)axe(i),delta_a(i),nbins(i),marr(i,0),mpop(i,0)
+       write(2,*)t0,i,nbins(i)
+       do jj=1,nbins(i)
+        write(2,*)marr(i,jj),sarr(i,jj),mpop(i,jj)
+ccc        write(2,*)ecc(i,jj),inc(i,jj)
+       enddo
+      enddo
+      close(2)
+
+ccc
+c Output of the initial condition ............................(end)
+ccc
+
+ccc
+c Big time loop ..................................................(begin)
+ccc
+      time=t0
+      tout=t0+dtout
+
+1000  continue                           ! timestep loop
+      write(*,*)'dt,time:',dtcol,time
+
+c timestep initializations:
+      dtstern=1.d10
+c zero the global arrays that accumulate debris exchange and e,i changes 
+c and also the binaries arrays into fake ones...
+      do j=1,Nanuli
+       do jj = 0,nbins(j)
+        mpop_change_tot(j,jj) = 0.d0
+        npop_change_tot(j,jj,1) = 0.d0
+        fe_tot(j,jj) = 0.d0
+        fi_tot(j,jj) = 0.d0
+       enddo
+      enddo
+            
+c ... Loop over all pairs of tracers: i is the impactor population
+c     j is the target population ..........................(begin)
+      do i=1,Nanuli  
+       do j=1,Nanuli
+            
+c ... Attempt one collisional step with timestep dtcol on the i,j pair  
+        call ucrm_step_ij(i1st,time,dtcol,i,j,nbinneg,nbins,
+     &                   marr,sarr,mpop,npop,axe,ecc,inc,delta_a,
+     &                   mpop_change,npop_change,fe,fi,dt_est,l_iso_tmp)
+        if (i.eq.j) l_iso(j)=l_iso_tmp ! save bin number for isolated objects
+c ... first check. Internal subroutine step needs to be not smaller than dtcol
+        if (dt_est.lt.dtcol) then
+         dtcol=dt_est
+         write(*,*)'dt_est smaller than dt_coll: ',dt_est
+         goto 1000
+        endif
+c  update population numbers and masses. 
+c  Returns  appropriate timestep
+        call pop_change(i,j,nbins,mpop,npop,
+     &     mpop_change,npop_change,mpop_change_tot,npop_change_tot,
+     &     fe,fi,fe_tot,fi_tot,dtcol,dtstern,ifail)
+         if (ifail.eq.1) goto 1000
+       enddo                 ! over j
+      enddo                  ! over i
+c ... Loop over all pairs of tracers: i is the impactor population
+c     j is the target population ............................(end)
+
+c ... Check that no population or mass bin is negative. 
+c     Return appropriate timestep
+      call pop_check(Nanuli,nbins,mpop,npop,
+     &     mpop_change_tot,npop_change_tot,dtcol,dtstern,ifail)
+      if (ifail.eq.1) goto 1000
+
+c ... Now we can update all variables; the step has been accepted
+      call update_pops(Nanuli,nbins,mpop,npop,ecc,inc,
+     &                 mpop_change_tot,npop_change_tot,fe_tot,fi_tot)
+
+c ... Recompute marrs and sarrs from new mass and mpop (moving bins)
+c ... this subroutine makes sure that npop is integer.
+c ... Also checks for problems and re-arrange marrs 
+      do j = 1,Nanuli
+       call ucrm_update_arrs(i1st,j,nbinneg(j),nbins(j),marr,sarr,
+     &                       mpop,npop,axe,delta_a,ecc,inc)
+      enddo   
+
+c ... Advance time after step has been accepted
+      te=time+dtcol
+
+ccc
+c Now the dynamical decay is handled ............................(begin)
+ccc
+      if (t2.le.te) then ! save t2 datapoint for interpolation
+       t1=t2                  
+       do j=1,Nanuli
+        npart1(j)=npart2(j)
+       enddo
+      endif
+      do while (t2.le.te)  ! search until the first t2 gt te is found
+       read(11,*,iostat=ierr)t2,(npart2(j),j=1,Nanuli)
+       if(ierr.ne.0) then
+        write(*,*)'error reading pop_decay.dat'
+        write(*,*)'file ended too early?'
+        stop
+       endif
+       if(t2.le.te)then
+        t1=t2          ! getting the largest time that is le te
+        do j=1,Nanuli
+         npart1(j)=npart2(j)
+        enddo
+       endif
+      enddo
+c ... now do the interpolation to find population at te
+      do j=1,Nanuli
+       do jj=BINNEG,BINMAX
+        npart_end(j,jj)=npart1(j)+(npart2(j)-npart1(j))/(t2-t1)*(te-t1)
+       enddo
+      enddo
+c ... now force decay of the population by (npart_init-npart_end)/npart_init
+      do j=1,Nanuli
+       do jj=BINNEG,BINMAX
+c .... compute fractional decay (fdec): different for each jj-bin
+c      because npart_init may be different
+        if (npart_init(j,jj) .gt. 0.d0) then
+         fdec=(npart_init(j,jj)-npart_end(j,jj))/npart_init(j,jj) 
+        else
+         fdec=0.d0
+        endif
+
+c ... SFD (original version)
+        npop_orig=int(npop(j,jj,1)+0.5)
+        npop(j,jj,1)=npop(j,jj,1)*(1.d0-fdec)
+        if(npop(j,jj,1).lt.1.d4.and.npop(j,jj,1).gt.0.)then 
+c ... population exists and forced to be integer if < 10000 bodies
+         nint=int(npop(j,jj,1)+0.5) 
+         npop(j,jj,1)=nint
+         fdec=(npop_orig-npop(j,jj,1))/npop_orig ! applied frac. decay
+         npart_init(j,jj)=npart_init(j,jj)*(1.d0-fdec) 
+c !update npart_init by the applied fdec. The applied fdec may
+c !be different from original fdec because of the int operation
+        else
+         npart_init(j,jj)=npart_init(j,jj)*(1.d0-fdec) !npop is real or 0
+        endif               
+        if (jj.gt.0) mpop(j,jj)=marr(j,jj)*npop(j,jj,1) !done to preserve marr
+
+       enddo     ! jj SFD bins
+      enddo      ! j  (anuli)
+ccc
+c Now the dynamical decay is handled ..............................(end)
+ccc
+
+c ... Calculate the new total mass   
+      total_mass_new = 0.d0
+      do j = 1,Nanuli
+       do jj = 0,nbins(j)
+        total_mass_new = total_mass_new + mpop(j,jj)
+       enddo
+      enddo
+      time=te ! time which we are at
+
+ccc
+c if n_bin(i,j) < numbintres somewhere, switch to treat the binaries
+c individually
+ccc
+      do i=1,Nanuli         ! i anulus of the binary (target)
+       do j=i_bin_1,i_bin_2 ! j size of the binary component (target)
+
+        if ((n_bin(i,j).le.numbintres).and.(iflag(i,j).eq.0)) then
+         iflag(i,j)=1
+         do k=1,n_bin(i,j)
+          ir=int(ran3(idum0)*dfloat(n_bin(i,j)))+1
+          if (ir.gt.n_bin(i,j)) ir=n_bin(i,j)
+          ii1=1
+          is=a_bin(i,j,ii1)
+130       if (is.lt.ir) then
+           ii1=ii1+1
+           is=is+a_bin(i,j,ii1)
+           goto 130
+          endif
+          a_ind(i,j,k)=(dfloat(ii1-1)+ran3(idum0))*da_bin
+          ir=int(ran3(idum0)*dfloat(n_bin(i,j)))+1
+          if (ir.gt.n_bin(i,j)) ir=n_bin(i,j)
+          ii1=1
+          is=e_bin(i,j,ii1)
+140       if (is.lt.ir) then
+           ii1=ii1+1
+           is=is+e_bin(i,j,ii1)
+           goto 140
+          endif
+          e_ind(i,j,k)=(dfloat(ii1-1)+ran3(idum0))*de_bin
+         enddo
+        endif
+
+       enddo      ! j size of the binary component
+      enddo       ! i anulus of the binary 
+
+ccc
+c  Output data to file ..........................................(begin)
+ccc
+      if (time.ge.tout) then  ! here we OUTPUT
+c ... Calculate the new total mass (why this is calculated anew?)
+       total_mass_new = 0.d0
+       do j = 1,Nanuli
+        do jj = 0,nbins(j) 
+         total_mass_new = total_mass_new + mpop(j,jj)
+        enddo
+       enddo
+c ... Output SFDs
+       open(2,file=outname,position='append')
+c       write(2,*)time,total_mass_new
+c       write(2,*)Nanuli
+       do i=1,Nanuli
+ccc        write(2,*)axe(i),delta_a(i),nbins(i),marr(i,0),mpop(i,0)
+        write(2,*)time,i,nbins(i)
+        do jj=1,nbins(i)
+         write(2,*)marr(i,jj),sarr(i,jj),mpop(i,jj)
+ccc         write(2,*)ecc(i,jj),inc(i,jj)
+        enddo
+       enddo
+       close(2)
+c ... Set the new output time
+       tout=time+dtout        
+      endif
+ccc
+c  Output data to file ............................................(end)
+ccc
+
+      if(time.ge.tend)then
+       write(*,*)'exiting at time=',time
+       close(11)
+       stop                                  !! done!!
+      else
+c select the minimum of three stepsizes
+       write(*,*)'stepsizes:',dt_est,dtstern
+       dtcol=min(dt_est/1.5,dtstern)
+       if (time+dtcol.gt.tout) dtcol=tout-time
+       goto 1000
+      endif
+ccc
+c Big time loop ....................................................(end)
+ccc
+
+8000  format (4 (f12.5, 1x))
+8100  format (f10.4, 1x, 4 (f12.5, 1x))
+
+      end
+
+c*************************************************************************
+c                          UCRM_STEP_IJ                              
+c*************************************************************************
+c Main subroutine. Does one step of the algorithm by interacting anulus i
+c with anulus j, over all their respective mass bins.
+c Returns the changes in population mass, number, ecc and inc.
+c Moreover it returns the bin number for isolated bodies and the suggested
+c timestep so that the individual collision probability of the bodies
+c is not too high
+
+      subroutine ucrm_step_ij(i1st,time,dtcol,i,j,nbinneg,nbins,
+     &     marr,sarr,mass,npop,a,e,inc,delta_a,
+     &     mass_change,npop_change,fe,fi,dt_est,l_iso)      
+
+      include 'ucrm3.4.inc'
+      
+c Inputs
+      real*8 marr(Manuli,BINNEG:BINMAX),sarr(Manuli,BINNEG:BINMAX)
+      real*8 mass(Manuli,0:BINMAX),npop(Manuli,BINNEG:BINMAX,Ndata)
+      real*8 time
+      integer i,j,nbins(Manuli),nbinneg(Manuli)
+      real*8 a(Manuli),e(Manuli,BINNEG:BINMAX),inc(Manuli,BINNEG:BINMAX)
+      real*8 delta_a(Manuli)
+      real*8 dtcol              ! collisional timestep 
+      integer i1st
+c Outputs
+      real*8 npop_change(2,0:BINMAX,Ndata),mass_change(2,0:BINMAX)
+      real*8 fe(2,0:BINMAX),fi(2,0:BINMAX),dt_est
+      integer l_iso
+
+c Internals
+      real*8 macc,mf,mbin,mvel,h,h0,v,v0,HH,space,rhill,vhill,beta
+      integer jj,k,l,lmax,new_k,kk
+      real*8 npop_remove(2,BINNEG:BINMAX,Ndata) ! npop loss to erosion
+      real*8 mass_remove(2,BINNEG:BINMAX) ! mass loss from bins due to collisions
+      real*8 fe_rem(2,BINNEG:BINMAX),fi_rem(2,BINNEG:BINMAX) ! mass weighted eccentricity and inclination loss from bins due to collisions
+      real*8 mass_debris(0:BINMAX)   ! mass gained from debris creation and accretion
+      real*8 fe_deb(0:BINMAX),fi_deb(0:BINMAX)   ! eccentricity and inclination of the debris creation and accretion
+      real*8 num_debris(0:BINMAX)   ! number of objects gained from debris creation and accretion
+      real*8 fe_s(0:BINMAX),fi_s(0:BINMAX) ! debris eccentricity and incl.     
+      real*8 deb_spect_m(0:BINMAX),deb_spect_n(0:BINMAX) ! debris mass and num.
+      real*8 mlr,mej,mlf,mtot 
+      real*8 ejr,diff,min_diff,kk_colls,rfg
+      real*8 ncoll,ncoll_kl,vcoll,fg,ncoll_kl_ind,kest,lest
+      real*8 mratio,qf,ncollmin,pcollmin,vcollmin,fgmin
+      real*8 totmass,totm,totmM
+      real*8 dm,dn,de,di
+c .......................................................................................
+c...  Zero the arrays that accumulate debris exchange 
+c...  Index 1 stands for target, index 2 stands for impactor 
+      do jj = 0,nbins(j)
+       mass_change(1,jj)=0.d0
+       npop_change(1,jj,1)=0.d0
+       fe(1,jj)=0.d0
+       fi(1,jj)=0.d0
+       mass_debris(jj) = 0.d0
+       num_debris(jj) = 0.d0
+       fe_deb(jj)=0.d0
+       fi_deb(jj)=0.d0
+       mass_remove(1,jj) = 0.d0 
+       npop_remove(1,jj,1) = 0.d0
+       fe_rem(1,jj)=0.d0
+       fi_rem(1,jj)=0.d0
+      enddo
+      do jj = -nbinneg(i),nbins(i)
+       mass_remove(2,jj) = 0.d0 
+       npop_remove(2,jj,1) = 0.d0
+       fe_rem(2,jj)=0.d0
+       fi_rem(2,jj)=0.d0
+       if (jj.ge.0) then
+        mass_change(2,jj)=0.d0
+        npop_change(2,jj,1)=0.d0
+        fe(2,jj)=0.d0
+        fi(2,jj)=0.d0
+       endif
+      enddo         
+      npop_change(1,0,1)=0.d0
+      npop_change(2,0,1)=0.d0
+      fe(1,0)=0.d0
+      fi(1,0)=0.d0
+      fe(2,0)=0.d0
+      fi(2,0)=0.d0
+      dt_est=1.d10
+      
+c...  Loop over target bins
+      do k = 1,nbins(j) 
+       if(npop(j,k,1).lt.one) goto 200 ! label 200 = next_k,  
+                                ! no collisions allowed on a target until 
+                                ! there is a "real" object (i.e., npop>1)
+c ...  Determine the largest impactor marr that is smaller than target marr  
+       lmax = 0
+       do l = 1,nbins(i) 
+        if(marr(i,l).le.marr(j,k)) then  
+         lmax = l 
+        endif
+       enddo
+c isolated bodies in the same anulus cannot collide with each other
+c        if(i.eq.j)then
+c           call iso_bodies(i,nbins,marr,npop,a,delta_a,e,l_iso)
+c           lmax=min(lmax,l_iso-1)
+c        endif
+
+c...  Loop over impactor bins 
+       do l = -nbinneg(i),lmax 
+        if(npop(i,l,1).lt.one) goto 100 ! label 100 = next_l, 
+                                ! no collisions allowed unless there is 
+                                ! a real projectile
+        if((i.ne.j).or.(k.ne.l).or.(npop(i,l,1).ge.two)) then ! if target and projectile bins are the same there must be at least two bodies
+
+c...  Calculate the collisional rate between i and j pops
+c     Output variables are ncoll = the number of collisions of i on j per year 
+c                      and vcoll = mean (weighted) collision velocity in cgs   
+c     assuming one body in each population, PI cm^2 cross-section and
+c     neglecting effects of gravitational focussing
+c HERE IS WHERE THE UNITS BECOME IMPORTANT. NCOLL IS THE COLLISION PROBABILITY 
+C PER CM2 PER YEAR. VCOLL IS IN CM/S. THIS MEANS THAT TIME MUST BE IN YR AND
+C SIZE IN CM AND Q* IN ERG/S. semi major axis must be in AU
+         call coll_rate(i,j,ncoll,vcoll)
+c...  If the two tori do not intersect, return; patch!
+         if (k.ge.l_iso) then
+          if (e(i,l).lt.(marr(j,k)/3.d0/msun)**0.33333333d0) ncoll=0.d0
+         endif
+c                                               end patch
+         if (ncoll.eq.0.d0) goto 100
+
+c  for i.ne.j we divide by 2 because this k-l collision will be treated 
+c  twice [because of if(marr(i,l).GE.marr(j,k)) condition]. 
+c  For i=j we divide by 2 because otherwise each collision is counted 
+c  twice [N(N-1)/2... see also KL98]               
+         if (marr(i,l).eq.marr(j,k)) ncoll=0.5d0*ncoll
+c...  Calculate fg, the focusing factor for i,l on j,k collisions 
+         call focusing_factor(marr(j,k),sarr(j,k),marr(i,l),
+     &                        sarr(i,l),a(j),vcoll,fg)
+c...  Calculate the number of collisions by one l on one k per yr. sarr must be in cm.             
+         ncoll_kl = ncoll*fg*((sarr(j,k)+sarr(i,l))**2)
+c...  The total number of collisions by l's on k's per yr    
+         ncoll_kl_ind = ncoll_kl*npop(i,l,1) ! per target body
+         ncoll_kl = ncoll_kl_ind*npop(j,k,1) ! total number of colls.
+c...  Returns ncoll_kl=ncoll_kl*dtcol as an integer value if < 1d4, 
+c...  rounded up or down based on a normally distributed random number
+c...  based and the size of the remainder (don't see where < 1d4 condition is;
+c...  seems like rounding always)
+         call ucrm_round(ncoll_kl,dtcol,i1st)
+         
+c...  Calculate the debris mass (mej) and the mass fraction in the 
+c...  largest fragment (mlf) and the slope of the fragment SFD
+c...  due to one collision of k on l. MLR=mtot-mej is > marr(j) for accretional
+c...  collisions.
+         mtot = marr(j,k) + marr(i,l)
+         call ucrm_ejecta_mass(j,i,marr(j,k),marr(i,l),vcoll,
+     &                         mlr,mej,mlf,qf)
+
+c...  Calculate the debris spectrum (mass, number) for a single 
+c     l on k collision (i.e., per collision)
+c...  debris spectrum INCLUDES the largest remnant  
+         call ucrm_partition(nbins(j),j,k,e(j,k),inc(j,k),marr,
+     &              mtot,mej,mlf,qf,deb_spect_m,deb_spect_n,fe_s,fi_s)
+         totmass=0.d0
+         do jj=0,nbins(j)
+          totmass=totmass+deb_spect_m(jj)
+         enddo
+c  bunch of security checks.
+         if(abs(totmass-mtot)/mtot.gt.1.e-14)then
+          write(*,*)'Warning: poor mass conserv.'
+          write(*,*)l,k,(totmass-mtot)/mtot
+          write(*,*)marr(i,l),marr(j,k)
+          write(*,*)mej,mtot-mej,sqrt(marr(j,0)*marr(j,1)),mlf,qf
+          totmass=totmass-deb_spect_m(0)
+          if(totmass.gt.mtot)then
+           write(*,*)'Fatal: Creating mass'
+           write(*,*)l,k,totmass,mtot
+           stop
+          endif
+         endif
+         totmass=totmass-deb_spect_m(0)
+         if(l.le.0.and.totmass.gt.marr(j,k)) goto 100 ! avoid introduction of mass from the extrapolation tail.
+c collisions with a projectile at the end of the tail do remove objects from the target bin. Thus the tail maight be too short
+         if(deb_spect_n(k).eq.0..and.l.eq.-nbinneg(i)
+     %      .and.mtot-mej.lt.marr(j,k))then
+          write(*,*)'WARNING!: TAIL MIGHT BE TOO SHORT' 
+          write(*,*)i,l,j,k,sarr(j,k)
+         endif
+c we want that the probability that a target is removed from its bin in one timestep is less than pthr. this sets a constraint on the timestep.
+         if(deb_spect_n(k).eq.0..and.l.gt.0)then
+          if(dt_est.gt.pthr/ncoll_kl_ind)then
+           dt_est=pthr/ncoll_kl_ind
+          endif
+         endif
+c...  Sum the net per mass changes owing to debris generation 
+c...  mass_debris is a variable that accumulates debris_spectrum into bins 
+c...  over all combinations of l's and k's. Compute also a 
+c     mass weighted mean e and i of debris.  
+         totm=0.d0
+         totmM=0.d0
+c    target's j-bins
+         do jj = 0,nbins(j)   
+          if (jj.eq.k) then
+           dm=deb_spect_m(jj)-marr(j,k)
+           dn=deb_spect_n(jj)-1
+           de=fe_s(jj)*deb_spect_m(jj)-marr(j,k)*e(j,k)
+           di=fi_s(jj)*deb_spect_m(jj)-marr(j,k)*inc(j,k)
+           mass_change(1,jj)=mass_change(1,jj)+ncoll_kl*dm
+           npop_change(1,jj,1)=npop_change(1,jj,1)+ncoll_kl*dn
+           fe(1,jj)=fe(1,jj)+ncoll_kl*de
+           fi(1,jj)=fi(1,jj)+ncoll_kl*di
+          else
+           mass_change(1,jj)=mass_change(1,jj)+
+     %                       ncoll_kl*deb_spect_m(jj)
+           npop_change(1,jj,1)=npop_change(1,jj,1)+
+     %                         ncoll_kl*deb_spect_n(jj)
+           fe(1,jj)=fe(1,jj)+ncoll_kl*fe_s(jj)*deb_spect_m(jj)
+           fi(1,jj)=fi(1,jj)+ncoll_kl*fi_s(jj)*deb_spect_m(jj)
+          endif
+         enddo
+c    projectile l-bin
+         if(l.gt.0)then
+          npop_change(2,l,1) = npop_change(2,l,1)-ncoll_kl
+          mass_change(2,l) = mass_change(2,l)-ncoll_kl*marr(i,l)
+c    mass weighted e and i of particles removed from projectile and target bins
+          fe(2,l)=fe(2,l)-ncoll_kl*marr(i,l)*e(i,l)
+          fi(2,l)=fi(2,l)-ncoll_kl*marr(i,l)*inc(i,l)
+         else
+          mass_change(2,0) = mass_change(2,0)-ncoll_kl*marr(i,l)
+         endif
+        endif  ! collision computation needed
+ 100    continue
+       enddo                 ! (l)
+ 200   continue
+      enddo                  ! (k)
+     
+      return
+      end                    ! ucrm_step_ij
+c----------------------------------------------------------------------------
+c****************************************************************************
+c                                  UCRM_UPDATE_ARRS
+c****************************************************************************
+c     This procedure updates marrs and sarrs using new marr and mpop
+c     (the moving-bin algorithm) 
+c****************************************************************************
+
+      subroutine ucrm_update_arrs(i1st,j,nbinneg,nbins,marr,sarr,mpop
+     &     ,npop,axe,da,ecc,inc)
+
+      include 'ucrm3.4.inc'
+
+c...  Inputs and Outputs
+      real*8 marr(Manuli,BINNEG:BINMAX),sarr(Manuli,BINNEG:BINMAX)
+      real*8 mpop(Manuli,0:BINMAX),npop(Manuli,BINNEG:BINMAX,Ndata)
+      real*8 ecc(Manuli,BINNEG:BINMAX),inc(Manuli,BINNEG:BINMAX)
+      real*8 axe(Manuli),da(Manuli)
+c...  Inputs
+      integer j,nbins,nbinneg,i1st
+
+c...  Internals
+      integer k
+      integer jj,kk,nint,nearest,nearest_lower,nearest_higher,difference
+      real*8 onethird,ftp,temp
+      integer nbin_max,ibin_plus,nbins_new
+      real*8 Msmallest,r_low,r_high
+      real*8 pop_ref,msum,nsum,slope,nsumnew,msumnew
+      real*8 rl3,rh3,rl1,rh1,rc3,rc1,dndr3,dndr1,sl,slmin,ncol,vcol
+      real*8 Mminus,eminus,iminus
+      save ftp,onethird
+
+c...  Init saved Variables
+      if (i1st.eq.0) then
+       ftp      = 4.d0/3.d0*acos(-1.d0)
+       onethird = 1.d0/3.d0
+      endif
+     
+c...  For real bins: new mass bin size = mass/pop 
+      do jj = 1,nbins  
+       if(npop(j,jj,1).lt.1.d4)then ! too big for an integer otherwise
+        nint=int(npop(j,jj,1)+0.5) 
+        npop(j,jj,1)=nint
+       endif
+       if(npop(j,jj,1).ge.1)then
+        marr(j,jj)=mpop(j,jj)/npop(j,jj,1)
+       else
+        mpop(j,jj)=0.d0
+       endif
+      enddo
+
+c...  (2) Check for out of order marr bins and re-sort
+ 993  continue
+      do jj = 2,nbins 
+       if (marr(j,jj).lt.marr(j,jj-1)) then              
+        write(*,*)'Re-sorting Bins at j,jj = ',j,jj
+
+c (a) SFD bins
+        temp = marr(j,jj)
+        marr(j,jj) = marr(j,jj-1)
+        marr(j,jj-1) = temp              
+
+        temp = mpop(j,jj)
+        mpop(j,jj) = mpop(j,jj-1)
+        mpop(j,jj-1) = temp
+              
+        temp = npop(j,jj,1)
+        npop(j,jj,1) = npop(j,jj-1,1)
+        npop(j,jj-1,1) = temp
+                          
+        temp = ecc(j,jj)
+        ecc(j,jj) = ecc(j,jj-1)
+        ecc(j,jj-1) = temp
+              
+        temp = inc(j,jj)
+        inc(j,jj) = inc(j,jj-1)
+        inc(j,jj-1) = temp
+
+        goto 993            ! start over until we are error free  
+       endif
+      enddo
+     
+c... chasing for bins confused with trash bin
+ 666  continue
+      do jj=1,nbins
+       if(marr(j,jj).le.marr(j,0))then 
+        write(*,*)'trashing:',marr(j,jj),marr(j,0)
+        if(jj.eq.1.and.mpop(j,2).lt.mpop(j,1)/mfactor**2)then 
+         write(*,*)'WARNING: new bin 1 of annulus ',j
+         write(*,*)'has small mass:',mpop(j,2),marr(j,2)
+        endif
+        mpop(j,0)=mpop(j,0)+mpop(j,jj)
+        do k=jj+1,nbins
+         mpop(j,k-1)=mpop(j,k)
+         npop(j,k-1,1)=npop(j,k,1)
+         marr(j,k-1)=marr(j,k)
+         ecc(j,k-1)=ecc(j,k)
+         inc(j,k-1)=inc(j,k)
+        enddo
+        nbins=nbins-1
+        goto 666
+       endif
+      enddo
+      
+c... checking if we need to modify nbin by adding new empty bins up to a mass 
+c... twice of that of the last filled bin, or removed empty bins 
+c... if they are too many
+      do jj=nbins,1,-1
+       if(mpop(j,jj).gt.0.d0)then
+        nbin_max=jj
+        goto 881
+       endif
+      enddo
+ 881  continue
+      ibin_plus=log(2.)/log(mfactor)+1
+      nbins_new=nbin_max+ibin_plus
+      if(nbins_new.gt.nbins)then
+       if(nbins_new.gt.BINMAX)then
+        write(*,*)'not enough space for positive bins'
+        write(*, *) nbins_new, BINMAX, nbin_max, ibin_plus
+        stop
+       else
+        do jj=nbins+1,nbins_new
+         mpop(j,jj)=0.d0
+         npop(j,jj,1)=0.d0
+         marr(j,jj)=marr(j,jj-1)*mfactor
+         ecc(j,jj)=0.
+         inc(j,jj)=0.
+        enddo
+       endif
+      endif
+      nbins=nbins_new
+
+c...  (3) Detect bins too far apart and create new bins between
+ 995  continue
+      do jj = 1,nbins-1 
+         
+c...  If mass ratio is larger that the critical mass ratio, create new bins
+       if(marr(j,jj)/marr(j,jj-1).gt.mfactor**1.5) then 
+c...  First pull all bins forward by one to create a space for new bin 
+c...  There has to be space at nbins! 
+        nbins=nbins+1
+        write(*,*)'generating bin ',jj,marr(j,jj),marr(j,jj-1)
+        if(nbins.gt.BINMAX)then
+         write(*,*)'not enough space for postivie bins'
+         stop
+        else
+         do kk = nbins,jj+1,-1 
+          marr(j,kk) = marr(j,kk-1)
+          mpop(j,kk) = mpop(j,kk-1)
+          npop(j,kk,1) = npop(j,kk-1,1)
+          ecc(j,kk)  = ecc(j,kk-1)
+          inc(j,kk)  = inc(j,kk-1)
+         enddo
+            
+c...  Derive the mass of objects in the newly-created bin
+c   we don't want that bins close to marr(0) are created empty.
+c for instance if bin(2) is created empty and then bin(1) is trashed
+c the new bin(1) is empty. Thsu the negative tail (see below) will drop empty 
+c too. On the contrary, we don't want to fill by interpolation the bins at 
+c  Otherwise when a runaway body grows in mass we artificially introduce bodies
+c between itself and the rest of the distribution. When bins are fulled or not
+c is governed by the parameter Nmul
+         marr(j,jj) = sqrt(marr(j,jj-1)*marr(j,jj+1)) ! geometric mean
+         if(marr(j,jj).le.Nmul*marr(j,0).and.
+     %      npop(j,jj+1,1).gt.Nmul)then ! fill the array by interp
+          write(*,*)'interp',marr(j,0),marr(j,jj)
+          if(jj.gt.1)then
+           Mminus=mpop(j,jj-1)
+           eminus=ecc(j,jj-1)
+           iminus=inc(j,jj-1)
+          else
+           Mminus=0.
+           eminus=ecc(j,jj+1)
+           iminus=inc(j,jj+1)
+          endif
+          msum=mpop(j,jj+1)+Mminus
+c     eccentricities and inclinations are filled with the mass weighted mean
+          ecc(j,jj)=(mpop(j,jj+1)*ecc(j,jj+1)+Mminus*eminus)/msum
+          inc(j,jj)= (mpop(j,jj+1)*inc(j,jj+1)+Mminus*iminus)/msum
+c     the mass ig filled by linear interpolation
+          slope=(mpop(j,jj+1)-Mminus)/(marr(j,jj+1)-marr(j,jj-1))
+          mpop(j,jj)=Mminus+slope*(marr(j,jj)-marr(j,jj-1))
+          msumnew=mpop(j,jj+1)+mpop(j,jj)+Mminus !renormalize for mass conservation
+          mpop(j,jj+1)=mpop(j,jj+1)/msumnew*msum
+          mpop(j,jj)=mpop(j,jj)/msumnew*msum
+          Mminus=Mminus/msumnew*msum
+          if(jj.gt.1)then
+           mpop(j,jj-1)=Mminus
+c now compute npop, round npop to an integer, and re-adjust marr
+           npop(j,jj-1,1)=mpop(j,jj-1)/marr(j,jj-1)
+           if(npop(j,jj-1,1).lt.1.d4)then 
+            nint=int(npop(j,jj-1,1)+.5)
+            npop(j,jj-1,1)=nint
+           endif
+           if(npop(j,jj-1,1).ge.1)then
+            marr(j,jj-1)=mpop(j,jj-1)/npop(j,jj-1,1)
+           else
+            mpop(j,jj-1)=0.d0
+           endif
+          endif
+          npop(j,jj,1)=mpop(j,jj)/marr(j,jj)
+          if(npop(j,jj,1).lt.1.d4)then 
+           nint=int(npop(j,jj,1)+.5) 
+           npop(j,jj,1)=nint
+          endif
+          if(npop(j,jj,1).ge.1)then
+           marr(j,jj)=mpop(j,jj)/npop(j,jj,1)
+          else
+           mpop(j,jj)=0.d0
+          endif
+          npop(j,jj+1,1)=mpop(j,jj+1)/marr(j,jj+1)
+          if(npop(j,jj+1,1).lt.1.d4)then 
+           nint=int(npop(j,jj+1,1)+.5) 
+           npop(j,jj+1,1)=nint
+          endif
+          if(npop(j,jj+1,1).ge.1)then
+           marr(j,jj+1)=mpop(j,jj+1)/npop(j,jj+1,1)
+          else
+           mpop(j,jj+1)=0.d0
+          endif
+         else  ! fill with zeros 
+          write(*,*)'zeroing',marr(j,0),marr(j,jj)
+          ecc(j,jj)=0.d0
+          inc(j,jj)=0.d0
+          mpop(j,jj)=0.d0
+          npop(j,jj,1)=0.d0
+         endif
+        endif
+        goto 995            ! restart checks
+       endif
+      enddo
+          
+c...  (4) Check for the need to join bins 
+ 996   continue
+       do jj = 2,nbins 
+c...  Check if bins too close. The test on npops is because one does not want
+c...  to create an artificial runaway body in largest bins
+        if(npop(j,jj,1).ge.1.d0 .and. npop(j,jj-1,1).ge.1.d0 .and.
+     &     marr(j,jj)/marr(j,jj-1) .lt. mfactor**0.5) then
+         write(*,*) 'Bins too close, joining them, jj = ',jj
+         ecc(j,jj-1) = (ecc(j,jj-1)*mpop(j,jj-1)+
+     $        ecc(j,jj)*mpop(j,jj))/(mpop(j,jj-1)+mpop(j,jj))
+         inc(j,jj-1) = (inc(j,jj-1)*mpop(j,jj-1)+
+     $        inc(j,jj)*mpop(j,jj))/(mpop(j,jj-1)+mpop(j,jj))
+         mpop(j,jj-1) = mpop(j,jj-1) + mpop(j,jj)            
+         npop(j,jj-1,1) = npop(j,jj-1,1)+npop(j,jj,1)
+         marr(j,jj-1) = mpop(j,jj-1)/npop(j,jj-1,1)
+c...  Pull the bins beginning at jj+1 each back 1
+         do kk  = jj+1,nbins 
+          marr(j,kk-1) = marr(j,kk)
+          mpop(j,kk-1) = mpop(j,kk)
+          npop(j,kk-1,1) = npop(j,kk,1)
+          ecc(j,kk-1)=ecc(j,kk)
+          inc(j,kk-1)=inc(j,kk)
+         enddo
+         nbins=nbins-1
+         goto 996          ! start over until we are error free 
+        endif
+       enddo
+
+c... now create the negative tail bins, imposing a slope that is either the extrapolation of the slope in the vicinity of marr(1) or a Donhany slope if the extrapolation cannot be done. This is important to avoid artificial waves in the SFD that would occur in case of a truncated distribution.
+      if(mpop(j,1).gt.0.)then
+       call coll_rate(j,j,
+     &      ncol,vcol)   ! compute the collision probability to know how small can be a projectile to kill a target in bin 1.
+       Msmallest=.05d0*marr(j,1)*1.d5/(vcol)**2 !compute the mass of the smallest impactor capable to break an object in bin 1, with *D=1.d5 at the current typical collision velocity. Take a factor of 40 for safety (hence .05 instead of 2 in the formula
+       nbinneg=log(marr(j,0)/Msmallest)/log(2.d0) ! compute nbinneg using a factor 2. in mass for negative binning.
+       if(nbinneg.le.0)nbinneg=-1
+      else
+       nbinneg=-1
+      endif
+      if(-nbinneg.lt.BINNEG)then
+       write(*,*)'not enough space for negative bins'
+       stop
+      elseif(nbinneg.gt.0)then
+c here we try an extrapolation of the SFD between bin 1 and bin 23. The value
+c 23 is arbitrary, but for massfactor=1.4 it corresponds to approximately 3 
+c orders of magnitude in mass and 1 in size. If the extrapolation fails 
+c (for instance bin 23 is empty) then a Donhany slope is assumed
+       if(npop(j,23,1).gt.0..and.npop(j,1,1).gt.0.)then
+        rl3=(sqrt(marr(j,23)*marr(j,22))/ftp/rho(j))**onethird
+        rh3=(sqrt(marr(j,23)*marr(j,24))/ftp/rho(j))**onethird
+        rc3=(marr(j,23)/ftp/rho(j))**onethird
+        rl1=(sqrt(marr(j,1)*marr(j,0))/ftp/rho(j))**onethird
+        rh1=(sqrt(marr(j,1)*marr(j,2))/ftp/rho(j))**onethird
+        rc1=(marr(j,1)/ftp/rho(j))**onethird
+        dndr3=npop(j,23,1)/(rh3-rl3)  ! differential number
+        dndr1=npop(j,1,1)/(rh1-rl1)
+        sl=(log10(dndr3)-log10(dndr1))/(log10(rc3)-log10(rc1))
+       else
+        sl=-3.5
+       endif
+       sl=sl+1   ! pass from differential to cumulative
+       write(*,*)'tail slope',sl
+c now build the tail distribution. Now that we have the slope we need
+c to calibrate the absoulte number of objects (i.e. the vertical scale)
+c This is done so that the negative tail extrapolated to bin 1 
+c would have the smae number of objects as in npop(1)
+       r_high=(sqrt(marr(j,1)*marr(j,2))/ftp/rho(j))**onethird
+       r_low=(sqrt(marr(j,1)*marr(j,0))/ftp/rho(j))**onethird
+c pop_ref is the normalization coefficient
+       pop_ref=-sl*npop(j,1,1)/(r_low**(sl)-r_high**(sl))
+       do jj=0,-nbinneg,-1 ! now fill the bins
+        if(jj.lt.0)then
+         marr(j,jj)=marr(j,jj+1)/2. ! Notice: we force a factor 2 spacing here instead of mfactor
+        endif
+        r_low=(marr(j,jj)/sqrt(2.d0)/ftp/rho(j))**onethird
+        r_high=(sqrt(marr(j,jj)*marr(j,jj+1))/ftp/rho(j))**onethird
+        npop(j,jj,1)=pop_ref/sl*(r_high**(sl)-r_low**(sl))
+        if(npop(j,jj,1).lt.1.d4)then ! too big for an integer otherwise
+           npop(j,jj,1)=int(npop(j,jj,1)+.5)
+        endif
+        ecc(j,jj)=ecc(j,1)  ! put e and i of bin 1 (which is non-empty otherwise we would not be here
+        inc(j,jj)=inc(j,1)
+       enddo
+      endif
+
+c...  Compute sarr's directly from marr's
+      do jj = -nbinneg,nbins
+       sarr(j,jj)  = (marr(j,jj)/(ftp*rho(j)))**onethird
+      end do
+
+      return
+      end                       ! ucrm_checks
+
+c----------------------------------------------------------------
+c module on gravitational focussing. Using Greeinzweigh and lissauer 1990
+c------------------------------------------------------------------------
+
+      subroutine focusing_factor(m1,r1,m2,r2,a1,vcoll,fg)
+      include 'ucrm3.4.inc'
+c     input
+      real*8 m1,r1,m2,r2,a1,vcoll
+c     output
+      real*8 fg  ! gravitational focussing
+c     internals
+      real*8 vesc,rHill,d,v2k,F2B,sin2i,ri
+      real*8 q,rlF2B,rlFG,rlF2B_liss,F2B_liss
+      real*8 LogF25,LogF50,d4,d2,ratio,Vhill,beta
+      external LogF25,LogF50
+
+c     compute the mutual escape velocity in cm/s
+      vesc=sqrt(2.d0*G*(m1+m2)/(r1+r2))
+     
+c     compute mutual Hill radius (in cm)
+      rHill=a1*AU*((m1+m2)/msun/3.d0)**(1./3.)
+
+      v2k=(G*msun/a1/AU) ! square of kepler velocity in cm/s
+
+c     stuff to correct for gaussian velocity speed. (see WS93)
+      vhill=vcoll/sqrt(v2k)/(rHill/a1/AU)
+      if(vhill.ge.2)then
+       beta=2.7
+      elseif(vhill.lt.1.)then
+       beta=1.0
+      else
+       beta=1.+(vhill-1)*1.7
+      endif
+
+c     compute normalized sum or radii (in Rhill)
+      d=(r1+r2)/rHill
+
+c     compute the two body gravitational focussing
+      F2B=(1.d0+beta*vesc**2/vcoll**2)
+
+c     compute the effective relative inclination for Lissauer's formulae
+c     i_H in greenzweig and Lissauer 1990, which stands for the relative
+c     velocity assuming e_H=2i_H
+
+      sin2i=(vcoll**2/v2k)*4.d0/7.d0 ! using formula A1 in Kenyon and Luu 98
+      ri=a1*AU*sqrt(sin2i)/rHill  ! i_H in greenzweig and Lissauer 1990
+
+      q=2.2*d/ri**2
+      rlF2B=log10(F2B)
+      F2B_liss=1.+1.80178/d/ri**2
+      rlF2B_liss=log10(F2B_liss)
+      if(ri.le..25)then
+       rlFg=LogF25(ri,d)/rlF2B_liss*rlF2B
+      elseif(ri.le.0.5)then
+       d4=d*(4.*ri)**(-2)
+       d2=d*(2.*ri)**(-2)
+       rlFg=(2.-4*ri)*LogF25(.25d0,d4)+(4.*ri-1.)*LogF50(.5d0,d2)
+       rlFg=rlFg/rlF2B_liss*rlF2B
+      elseif(ri.le.2.5)then
+       rlFg=LogF50(ri,d)/rlF2B_liss*rlF2B
+      else
+       rlFg=rlF2B
+      endif
+ 
+      fg=10.d0**rlFg
+
+      return
+      end
+
+c     auxiliary functions for gravitational focussing calculation
+      real*8 function LogF25(ri,d)
+      real*8 ri,d,q,rlFg
+         
+      q=2.2*d/ri**2
+      if(ri.le..25.and.q.le..4)then
+         rlFg=.725-log10(d)-log10(ri)
+      elseif(ri.le..25.and.q.le.1.)then
+         rlFg=.96-.685*log10(d)-1.63*log10(ri)
+      elseif(ri.le..25.and.q.le.6.3)then
+         rlFg=1.195-(1.375+0.219*ri)*log10(q)-3.*log10(ri)
+      elseif(ri.le..25.and.q.gt.6.3)then
+         rlFg=.78-.175*ri-1.5*log10(d)
+      else
+         write(*,*)'i too big'
+         stop
+      endif
+
+      LogF25=rlFg
+      return
+      end
+
+      real*8 function LogF50(ri,d)
+      real*8 ri,d,q,f2B,rlF2B
+         
+      q=2.2*d/ri**2
+      F2B=1.+1.80178/d/ri**2
+      rlF2B=log10(F2B)
+      if(ri.le.2.5)then
+         rlFg=rlF2B+(.0971+.0794*log10(ri))*(ri-2.5)**2
+         if(log10(d).gt.ri-3)then
+            rlFg=rlFg-0.0216*(3.-ri+log10(d))*(ri-2.5)**2
+         endif
+      else
+         write(*,*)' i is too big'
+         stop
+      endif
+      LogF50=rlFg
+      return
+      end
+
+c*********************************************************************************
+c                                UCRM_ROUND
+c*********************************************************************************      
+c     Round off any input vector < Input_min to a statistical value
+c     Alan Stern		                          30 Mar 2003
+c     c/o OK                                          30 Mar 2003
+c     translated to Fortran, D. Nesvorny              16 Aug 2003
+c ********************************************************************************
+
+      subroutine ucrm_round(x,dt,i1st)
+
+      include 'ucrm3.4.inc'
+c     input
+      real*8 dt
+c     input/output
+      real*8 x
+      integer i1st
+c     internals
+      real*8 chance,xin,x0,xr
+      real*8 ran3
+      integer idum0
+c     save iseed
+c     external ran
+
+c... Calcs
+      x = x*dt                                ! we multiply by the time now
+      x0  = dint(x)                           ! Mantissa
+      xr  = x - x0                            ! Remainder
+
+      if (xr .ge. 1.d0) then
+       write(*,*) 'Error in ucrm_round. Exiting...'
+       stop           ! Error (could never happen, I guess)
+      end if
+         
+c...  Uniform random number 0 to 1
+      chance=ran3(idum0)
+ccc      chance=grnd()
+ 
+c... Add one to the floor if random is "thumbs up" 
+      if (chance .le. xr) x = dint(x) + 1.d0 ! round up (if condition is true) 
+      if (chance .gt. xr) x = dint(x)        ! else use floor
+
+c... Done
+      return
+      end                       ! ucrm_round
+c---------------------------------------------------------------------------------
+
+ccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c   computes ejected mass, slope of fragments and size of the largest
+c   fragment according to SPH experiments
+cccccccccccccccccccccc
+
+      subroutine ucrm_ejecta_mass(j,i,m1,m2,vcoll,Mlr,Mej,Mlf,qf)
+      include 'ucrm3.4.inc'
+c     input
+      real*8 m1,m2,vcoll
+      integer j,i
+c     Output
+      real*8 Mlr,Mej,Mlf,qf
+c     internals
+      real*8 Qstar,Q,r1eff
+      integer k,l
+      real*8 rho_m,Q0_m,a_benz_m,BB_m,rho_bas_m,b_benz_m,q_fact_m
+
+      if(ifrag.eq.0)then
+       mej=0.d0
+       mlf=0.d0
+       qf=-2.5
+      else
+       rho_m=(m1*rho(j)+m2*rho(i))/(m1+m2)
+       Q0_m=(m1*Q0(j)+m2*Q0(i))/(m1+m2)
+       a_benz_m=(m1*a_benz(j)+m2*a_benz(i))/(m1+m2)
+       BB_m=(m1*BB(j)+m2*BB(i))/(m1+m2)
+       rho_bas_m=(m1*rho_bas(j)+m2*rho_bas(i))/(m1+m2)
+       b_benz_m=(m1*b_benz(j)+m2*b_benz(i))/(m1+m2)
+       q_fact_m = (m1*q_fact(j)+m2*q_fact(i))/(m1+m2)
+       r1eff=((m1+m2)/(4./3.*pi*rho_m))**(1./3.)
+c Using Q*
+       Qstar=Q0_m*r1eff**a_benz_m+BB_m*rho_bas_m*r1eff**b_benz_m
+       Qstar = Qstar / q_fact_m
+       Q=0.5d0*m2*vcoll**2/m1 ! impact Q
+         
+       if (Q.lt.Qstar) then
+        Mlr=(-0.5d0*(Q/Qstar-1.d0)+0.5d0)*(m1+m2) ! largest remnant according to Benz-Asph
+       else
+        Mlr=(-0.35d0*(Q/Qstar-1.d0)+0.5d0)*(m1+m2) ! largest remnant according to Benz-Asph
+       endif
+       if (Mlr.lt.0.) Mlr=0.d0
+       Mej=(m1+m2)-Mlr        ! total mass in ejecta
+         
+c     compute mass of the largest fragment
+       Mlf=0.008d0*(Q/Qstar*exp(-(Q/Qstar/4.d0)**2))*(m1+m2) ! our empirical formula from simulations in Durda et al paper
+       if (Mlf.gt.Mej) Mlf=0.d0
+       if (Mlf.ge.Mlr) then
+        Mlr=0.d0     ! erase the contribution of the largest remenant
+        Mej=(m1+m2)
+c            Mlf=Mlr
+       endif
+c     comute cumulative slope of the fragment size distribution
+       qf=-10.d0+7.d0*(Q/Qstar)**0.4*exp(-Q/Qstar/7.d0) ! our empirical  formula from simulations Durda et al paper
+      endif
+      return
+      end
+
+c--------------------------------------------------------------------------
+c  distributes the fragments according to the existent mass bins
+      subroutine ucrm_partition(nbins,j,k,e1,inc1,marr,
+     &              mtot,mej,Mlf,qf,
+     %              deb_spect_m,deb_spect_n,fe_s,fi_s)  
+
+      include 'ucrm3.4.inc'
+c     Input
+      integer nbins,j,k
+      real*8 e1,inc1,marr(Manuli,BINNEG:BINMAX),mtot,mej,Mlf,qf
+c     mej=ejected mass
+c     mlf=mass of the largest fragment (not remnant: the beginning of the SFD)
+c     qf=cumulative slope of SFD
+c     e1,inc1=e and i of progenitor
+c     Output
+      real*8 deb_spect_m(0:BINMAX),deb_spect_n(0:BINMAX)
+      real*8 fe_s(0:BINMAX),fi_s(0:BINMAX)
+c     Internals
+      real*8 mlr,minimum,ratio,r_lf,r
+      integer mlloc,mllocMlr
+      real*8 targ,val,der,dx,r_break,r_low,r_high
+      real*8 ftp,onethird,Pref,Prefprim,totmass,totnum,DonMass
+      real*8 totmasstmp,totnumtmp
+      integer jj,kk
+
+c initialization stuff....
+      ftp=4.d0/3.d0*pi*rho(j) ! NOTE we assume all fragments have the same
+                              ! physical properties (rho etc.) of the target
+      onethird=1.d0/3.d0
+
+      do jj=1,nbins
+         deb_spect_m(jj)=0.d0
+         deb_spect_n(jj)=0.d0
+         fe_s(jj)=0.d0
+         fi_s(jj)=0.d0
+      enddo
+      totmass=0.d0
+      totnum=0.d0
+
+      Mlr=Mtot-Mej ! mass of largest remnant
+c...  Find the bin of largest debris object, i.e "marr(jj)" that is closest to "ml"
+
+      if(Mlr.gt.sqrt(marr(j,0)*marr(j,1)))then
+         minimum = marr(j,nbins)/marr(j,0)  
+         mlloc = 0
+         do jj = 1,nbins
+            ratio=mlr/marr(j,jj)
+            if(ratio.lt.1.d0)ratio=1.d0/ratio
+            if(ratio.lt.minimum) then
+               minimum = ratio
+               mlloc = jj       ! mlloc is the index location of the largest debris object bin
+            end if
+         end do
+         deb_spect_m(mlloc)=mlr
+         deb_spect_n(mlloc)=1.d0
+         fe_s(mlloc)=e1   ! largest remanant inherits e and i of progenitor
+         fi_s(mlloc)=inc1
+         totmass=Mlr
+         mllocMLr=mlloc
+      else
+c         deb_spect_m(0)=Mlr
+c         return
+      endif
+  
+
+c     now build the SFD starting from the larges fragment DOWNWARDS
+      r_LF=(Mlf/ftp)**onethird
+      Pref=-qf/r_LF**qf ! normalizing factor in the diff distribution so that the integral from r_LF to infinity of the differential distribution is 1
+      qf=qf-1 ! now it is the differential slope
+      
+
+      if(Mlf.lt.sqrt(marr(j,0)*marr(j,1)))then
+         deb_spect_m(0)=mtot-totmass ! even the largest fragment is in the dust bin
+         return
+      endif
+c search for bin of the largest fragment
+      minimum = marr(j,nbins)/marr(j,0)  
+      mlloc = 0
+      do jj = 1,nbins
+         ratio=Mlf/marr(j,jj)
+         if(ratio.lt.1.d0)ratio=1.d0/ratio
+         if(ratio.lt.minimum) then
+            minimum = ratio
+            mlloc = jj     
+         end if
+      end do
+c  compute mass and number of objects in that bin (adding Mlf and 1 because the integration starts from r_LF)
+      r_low=(sqrt(marr(j,mlloc)*marr(j,mlloc-1))/ftp)**onethird
+      if(qf.ne.-1)then
+         deb_spect_n(mlloc)=Pref*(r_LF**(1.+qf)-r_low**(1.+qf))/(1.+qf)
+     %        +1.d0
+         if(deb_spect_n(mlloc).lt.1.d4)then ! too big for an integer otherwise
+            deb_spect_n(mlloc)=int(deb_spect_n(mlloc))
+         endif
+         if(deb_spect_n(mlloc).gt.1.)then ! compute the radius at which the integral is integer and equal to deb_spect_n(mlloc)-1.d0
+            r_low=(r_LF**(1.+qf)-(deb_spect_n(mlloc)-1.d0)
+     %           *(1.+qf)/Pref)**(1.d0/(1.+qf))
+         else
+            r_low=r_LF
+         endif
+      else ! same stuff, but with logarithmic integrand
+         deb_spect_n(mlloc)=Pref*(log(r_LF)-log(r_low))+1.d0
+         if(deb_spect_n(mlloc).lt.1.d4)then ! too big for an integer otherwise
+            deb_spect_n(mlloc)=int(deb_spect_n(mlloc))
+         endif
+         if(deb_spect_n(mlloc).gt.1)then
+            r_low=exp(log(r_LF)-(deb_spect_n(mlloc)-1.d0)/Pref)
+         else
+            r_low=r_LF
+         endif
+      endif
+c     now compute the mass. If there is only one body we add the real mass. Otherwise we use the integral of the SFD
+      if(deb_spect_n(mlloc).eq.2.)then
+         deb_spect_m(mlloc)=Mlf+ftp*r_low**3
+      elseif(qf.ne.-4)then
+         deb_spect_m(mlloc)=Pref*ftp*(r_LF**(4.+qf)-r_low**(4.+qf))
+     %        /(4.+qf)+Mlf
+      else
+         deb_spect_m(mlloc)=Pref*ftp*(log(r_LF)-log(r_low))+Mlf
+      endif
+      totmass=totmass+deb_spect_m(mlloc)
+      if(totmass.gt.mtot)then
+         write(*,*)'problem: too much mass in Mlf'
+         write(*,*)Mlf,mlloc,deb_spect_m(mlloc)-Mlf,mtot,Mlr
+         stop
+      endif
+      totnum=deb_spect_n(mlloc)+1
+      if(mlloc.eq.mllocMlr)then
+         deb_spect_m(mlloc)=deb_spect_m(mlloc)+Mlr
+         deb_spect_n(mlloc)=deb_spect_n(mlloc)+1
+      endif
+      fe_s(mlloc)=e1     ! all fragments inherit the e and i of the progenitor
+      fi_s(mlloc)=inc1
+
+c now do the remaining bins. Same algorithms as above for Mlf
+      do jj=mlloc-1,1,-1
+         r_high=r_low
+         r_low=(sqrt(marr(j,jj)*marr(j,jj-1))/ftp)**onethird
+ 76      if(qf.ne.-1)then
+            deb_spect_n(jj)=Pref*(r_high**(1.+qf)-r_low**(1.+qf))
+     %           /(1.+qf)
+            if(deb_spect_n(jj).lt.1.d4)then ! too big for an integer otherwise
+               deb_spect_n(jj)=int(deb_spect_n(jj))
+            endif
+            if(deb_spect_n(jj).ne.0.)then ! compute the radius at which the integral is integer and equal to deb_spect_n(jj)
+               r_low=(r_high**(1.+qf)-deb_spect_n(jj)
+     %              *(1.+qf)/Pref)**(1.d0/(1.+qf))
+            else
+               r_low=r_high
+            endif
+         else ! same as before but with logarithmic integrand
+            deb_spect_n(jj)=Pref*(log(r_high)-log(r_low))
+            if(deb_spect_n(jj).lt.1.d4)then ! too big for an integer otherwise
+               deb_spect_n(jj)=int(deb_spect_n(jj))
+            endif
+            if(deb_spect_n(jj).ne.0.)then
+               r_low=exp(log(r_high)-deb_spect_n(jj)/Pref)
+            else
+               r_low=r_high
+            endif
+         endif
+c now add the mass
+         if(deb_spect_n(jj).eq.0)then
+            deb_spect_m(jj)=0.d0
+         else
+            if(qf.ne.-4)then
+               deb_spect_m(jj)=Pref*ftp*(r_high**(4.+qf)-r_low**(4.+qf))
+     %              /(4.+qf)
+            else
+               deb_spect_m(jj)=Pref*ftp*(log(r_high)-log(r_low))
+            endif
+c if the mean mass of the fragment is not in the bin add the masses one by one 
+            if(deb_spect_m(jj)/deb_spect_n(jj).gt.
+     %           sqrt(marr(j,jj)*marr(j,jj+1)).or.
+     %         deb_spect_m(jj)/deb_spect_n(jj).lt.
+     %           sqrt(marr(j,jj-1)*marr(j,jj)))then !count objects one by one
+               deb_spect_m(jj)=0.d0
+               do kk=1,int(deb_spect_n(jj))
+c  compute the size of each object (for which the integrand is unity)
+                  if(qf.ne.-1)then
+                     r=(r_high**(1.+qf)-kk
+     %                    *(1.+qf)/Pref)**(1.d0/(1.+qf))
+                  else
+                     r=exp(log(r_high)-kk/Pref)
+                  endif
+                  deb_spect_m(jj)=deb_spect_m(jj)+ftp*r**3 ! add its mass
+               enddo
+            endif
+         endif
+c     total mass and number at this point of the SFD. It is a tmp variable because we might have integrated the qf slope too far. So, we need to check that if we had an SFD with a Donhany slope from this point down to 0, the total mass would be smaller than mej. Otherwise we need to take a step back and use the Donhany slope already in the last bin.
+         totmasstmp=totmass+deb_spect_m(jj) 
+         totnumtmp=totnum+deb_spect_n(jj)
+c   normalization coefficient if the SFD were Donahny from this point downwards
+         Prefprim=2.5*totnumtmp/r_low**(-2.5)
+         DonMass=Prefprim*ftp*2.d0*sqrt(r_low) ! total mass of a Donhany distribution down to r=0
+         if(totmasstmp+DonMass.gt.mtot.and.qf.ne.-3.5)then ! use Donhani from this last bin
+            qf=-3.5
+            Pref=2.5*totnum/r_high**(-2.5)
+            goto 76
+         elseif(totmasstmp+DonMass.gt.mtot.and.qf.eq.-3.5)then ! not enough mass even for Donhany. Skip bin
+            r_low=(sqrt(marr(j,jj)*marr(j,jj-1))/ftp)**onethird
+            Pref=2.5*totnum/r_low**(-2.5)
+            deb_spect_m(jj)=0.d0
+            deb_spect_n(jj)=0.d0
+            goto 77
+         endif
+c step succesful. we don't need to change slope yet
+         fe_s(jj)=e1
+         fi_s(jj)=inc1      
+c total mass and number at this point of the SFD
+         totmass=totmass+deb_spect_m(jj)
+         totnum=totnum+deb_spect_n(jj)
+ 77      continue
+      enddo
+
+c     now put in deb_spect_m(0) the rest
+      deb_spect_m(0)=mtot-totmass
+      if(deb_spect_m(0).lt.0.)then
+         write(*,*)'problem, deb_spect_m(0)<0:',deb_spect_m(0)
+         stop
+      endif
+      
+      return
+      end
+
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c   collision probability calculation
+
+      subroutine coll_rate(i,j,pcoll,vcoll)
+
+c  this subroutine uses pre-computed collision probabilities and impact
+c  velocities; projectile and target in anuli *i* and *j*
+
+      include 'ucrm3.4.inc'
+c     Inputs
+      integer i,j
+c     Outputs
+      real*8 vcoll,pcoll
+c .....................................................................
+      pcoll=Pint(i,j)
+      vcoll=vrel(i,j)
+      vcoll=vcoll*1.d5       ! notice, we convert to cm^2 here (cm/s; cm^-2 y^-1)
+      pcoll=pcoll/(1.d5)**2
+      return
+      end
+
+ccccccccccccccccccccccccccccccc
+      subroutine iso_bodies(i,nbins,marr,npop,a,delta_a,e,l_iso)
+
+c compute bin number for isolated bodies
+c isolated bodies: those for which the sum of mutual Hill radii*2sqrt(3)+2ae
+c is less than the bin width (from WS93)
+      include 'ucrm3.4.inc'
+
+c     inputs
+      integer i,nbins(Manuli)
+      real*8 marr(Manuli,BINNEG:BINMAX),npop(Manuli,BINNEG:BINMAX,Ndata)
+      real*8 a(Manuli),delta_a(Manuli)
+      real*8 e(Manuli,BINNEG:BINMAX)
+c     output
+      integer l_iso
+c     internals
+      real*8 space
+      integer kk,l
+
+      l_iso=nbins(i)
+      do l=1,nbins(i)
+         space=0.d0
+         if(npop(i,l,1).gt.0.)then
+            do kk=l,nbins(i)
+               space=space+npop(i,kk,1)*
+     %              (2.*sqrt(3.)*a(i)*(2.*marr(i,kk)/3./msun)**(1./3.)
+     %              +2.*a(i)*e(i,kk))
+            enddo
+            if(space.lt.delta_a(i))then
+               l_iso=l
+               return
+            elseif(npop(i,l,1).eq.1..and.
+     %          2.*sqrt(3.)*a(i)*(marr(i,l)/3./msun)**(1./3.)
+     %              +2.*a(i)*e(i,l)
+     %              .gt.delta_a(i))then
+c we count as an isolated body also a single body whose Hill radius exceed the size of the anulus
+               l_iso=l
+               return
+            endif
+         endif
+      enddo
+      
+      return
+      end
+
+cccccccccccccccccccccccccccccccccccccccc
+      subroutine pop_change(i,j,nbins,mpop,npop,
+     %     mpop_change,npop_change,mpop_change_tot,npop_change_tot,
+     %     fe,fi,fe_tot,fi_tot,dtcol,dtstern,ifail)
+c     bufferizes the population changes in number and mass. 
+c     Checks that the population  does not decrease negative and computes 
+c     the appropriate timestep for the population not to decrease more than 
+c     tollS
+
+      include 'ucrm3.4.inc'
+c     inputs
+      integer i,j,nbins(Manuli)
+      real*8 mpop(Manuli,0:BINMAX)
+      real*8 npop(Manuli,BINNEG:BINMAX,Ndata)
+      real*8 npop_change(2,0:BINMAX,Ndata), mpop_change(2,0:BINMAX)
+      real*8 dtcol
+      real*8 fe(2,0:BINMAX),fi(2,0:BINMAX)
+c     inputs/Outputs
+      real*8 npop_change_tot(Manuli,0:BINMAX,Ndata)
+      real*8 mpop_change_tot(Manuli,0:BINMAX)
+      real*8 fe_tot(Manuli,0:BINMAX),fi_tot(Manuli,0:BINMAX)
+      real*8 dtstern
+      integer ifail
+c     internals
+      integer jj
+      real*8 dtstern_tmp
+
+      ifail=0
+      do jj = 1,nbins(j)   ! first check the target bins. Notice, check is done only if population decrease. increasing the population > tollS is fine. For instance if a bin has one object the number and mass can double!
+         if(mpop_change(1,jj).lt.0..and.mpop(j,jj).gt.0.)then
+            dtstern_tmp=dtcol*tollS/abs(mpop_change(1,jj)/mpop(j,jj))
+            dtstern=min(dtstern_tmp,dtstern)
+            if(dtstern_tmp.lt.dtcol*tollS)then
+               dtcol=dtstern
+               write(*,*)'dtstern too small:',dtstern
+               ifail=1
+               return
+            endif
+         endif
+         if(npop_change(1,jj,1).lt.0..and.npop(j,jj,1).gt.0.)then
+            dtstern_tmp=dtcol*tollS/abs(npop_change(1,jj,1)/
+     %           npop(j,jj,1))
+            dtstern=min(dtstern_tmp,dtstern)
+            if(dtstern_tmp.lt.dtcol*tollS)then
+               dtcol=dtstern
+               write(*,*)'dtstern too small:',dtstern
+               ifail=1
+               return
+            endif
+         endif
+      end do
+      do jj = 1,nbins(i)   ! then check the projectile bins
+         if(mpop_change(2,jj).lt.0..and.mpop(i,jj).gt.0.)then
+            dtstern_tmp=dtcol*tollS/abs(mpop_change(2,jj)/mpop(i,jj))
+            dtstern=min(dtstern_tmp,dtstern)
+            if(dtstern_tmp.lt.dtcol*tollS)then
+               dtcol=dtstern
+               write(*,*)'dtstern too small:',dtstern
+               ifail=1
+               return
+            endif
+         endif
+         if(npop_change(2,jj,1).lt.0..and.npop(i,jj,1).gt.0.)then
+            dtstern_tmp=dtcol*tollS/abs(npop_change(2,jj,1)
+     %           /npop(i,jj,1))
+            dtstern=min(dtstern_tmp,dtstern)
+            if(dtstern_tmp.lt.dtcol*tollS)then
+               dtcol=dtstern
+               write(*,*)'dtstern too small:',dtstern
+               ifail=1
+               return
+            endif
+         endif
+      end do
+      
+c...  The step was successfull for this pair  (no return hit), update global change variables
+      do jj = 0,nbins(j)
+         mpop_change_tot(j,jj) = mpop_change_tot(j,jj) 
+     &        + mpop_change(1,jj)
+         npop_change_tot(j,jj,1) = npop_change_tot(j,jj,1) 
+     &        + npop_change(1,jj,1)
+         fe_tot(j,jj)=fe_tot(j,jj)+fe(1,jj)
+         fi_tot(j,jj)=fi_tot(j,jj)+fi(1,jj)
+      end do
+      do jj = 0,nbins(i)
+         mpop_change_tot(i,jj) = mpop_change_tot(i,jj) 
+     &        + mpop_change(2,jj)
+         npop_change_tot(i,jj,1) = npop_change_tot(i,jj,1) 
+     &        + npop_change(2,jj,1)
+         fe_tot(i,jj)=fe_tot(i,jj)+fe(2,jj)
+         fi_tot(i,jj)=fi_tot(i,jj)+fi(2,jj)
+      end do
+      
+      return
+      end
+
+cccccccccccccccccccccccccccccccccccccccccccccc
+      subroutine pop_check(Nanuli,nbins,mpop,npop,
+     $     mpop_change_tot,npop_change_tot,dtcol,dtstern,ifail)
+c...  Check that no population or mass bin is negative. 
+c     Return appropriate timestep for this not to be true next time
+      include 'ucrm3.4.inc'
+
+c     Inputs
+      integer Nanuli,nbins(Manuli)
+      real*8 mpop(Manuli,0:BINMAX),npop(Manuli,BINNEG:BINMAX,Ndata)
+      real*8 npop_change_tot(Manuli,0:BINMAX,Ndata)
+      real*8 mpop_change_tot(Manuli,0:BINMAX)
+      real*8 dtcol
+c     input/output 
+      real*8 dtstern
+      integer ifail
+c     internals
+      integer j,jj
+      real*8 dtstern_tmp
+
+      ifail=0
+      do j = 1,Nanuli    ! for all anuli 
+         do jj = 1,nbins(j)  ! for all bins
+            if(mpop_change_tot(j,jj).lt.0..and.mpop(j,jj).gt.0.)then
+               dtstern_tmp=dtcol*tollS/abs(mpop_change_tot(j,jj)
+     %           /mpop(j,jj))
+               dtstern=min(dtstern_tmp,dtstern)
+               if(dtstern_tmp.lt.dtcol*tollS)then
+                  dtcol=dtstern
+                  write(*,*)'dtstern too small:',dtstern
+                  ifail=1
+                  return
+               endif            
+            endif
+            if(npop_change_tot(j,jj,1).lt.0..and.npop(j,jj,1).gt.0.)then
+               dtstern_tmp=dtcol*tollS/abs(npop_change_tot(j,jj,1)/
+     %              npop(j,jj,1))
+               dtstern=min(dtstern_tmp,dtstern)
+               if(dtstern_tmp.lt.dtcol*tollS)then
+                  dtcol=dtstern
+                  write(*,*)'dtstern too small:',dtstern
+                  ifail=1
+                  return
+               endif            
+            endif
+         end do
+      end do            
+      
+      return
+      end
+
+cccccccccccccccccccccccccccccccccccc
+      subroutine update_pops(Nanuli,nbins,mpop,npop,ecc,inc,
+     %     mpop_change_tot,npop_change_tot,fe_tot,fi_tot)
+c     update masses,number, e and i of all populations
+      include 'ucrm3.4.inc'
+c     inputs
+      integer Nanuli,nbins(Manuli)
+      real*8 npop_change_tot(Manuli,0:BINMAX,Ndata)
+      real*8 mpop_change_tot(Manuli,0:BINMAX)
+      real*8 fe_tot(Manuli,0:BINMAX),fi_tot(Manuli,0:BINMAX)
+c     input/outputs
+      real*8 ecc(Manuli,BINNEG:BINMAX),inc(Manuli,BINNEG:BINMAX)
+      real*8 mpop(Manuli,0:BINMAX),npop(Manuli,BINNEG:BINMAX,Ndata)
+c     internals
+      integer j,jj
+c ...............................................................
+      do j = 1,Nanuli  
+       do jj = 0,nbins(j) 
+        ecc(j,jj) = mpop(j,jj)*ecc(j,jj)+fe_tot(j,jj)
+        inc(j,jj) = mpop(j,jj)*inc(j,jj)+fi_tot(j,jj)
+        npop(j,jj,1) = npop(j,jj,1) + npop_change_tot(j,jj,1) 
+        mpop(j,jj) = mpop(j,jj) + mpop_change_tot(j,jj)
+        if(mpop(j,jj).gt.0.d0)then
+         ecc(j,jj) = ecc(j,jj)/mpop(j,jj)
+         inc(j,jj) = inc(j,jj)/mpop(j,jj)
+        else
+         ecc(j,jj) = 0.d0
+         inc(j,jj) = 0.d0
+        endif
+       enddo
+      enddo
+c
+      return
+      end
+c =====================================================================
+      function ran3(idum)
+      implicit real*8(a-h,o-z)
+      parameter (mbig=1000000000,mseed=161803398,mz=0,fac=1.d-9)
+      dimension ma(55)
+      data iff /0/
+      save
+c --------------------------------------------------------------------
+      if((idum.ge.0).and.(iff.ne.0)) goto 20
+        iff=1
+        mj=mseed-iabs(idum)
+        mj=mod(mj,mbig)
+        ma(55)=mj
+        mk=1
+        do 11 i=1,54
+          ii=mod(21*i,55)
+          ma(ii)=mk
+          mk=mj-mk
+          if(mk.lt.mz)mk=mk+mbig
+          mj=ma(ii)
+11      continue
+        do 13 k=1,4
+          do 12 i=1,55
+            ma(i)=ma(i)-ma(1+mod(i+30,55))
+            if(ma(i).lt.mz)ma(i)=ma(i)+mbig
+12        continue
+13      continue
+        inext=0
+        inextp=31
+        idum=1
+20    continue
+      inext=inext+1
+      if(inext.eq.56)inext=1
+      inextp=inextp+1
+      if(inextp.eq.56)inextp=1
+      mj=ma(inext)-ma(inextp)
+      if(mj.lt.mz)mj=mj+mbig
+      ma(inext)=mj
+      ran3=mj*fac
+      return
+      end
+
+c =====================================================================
+      SUBROUTINE SKIP (IUNIT)
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c  ROUTINE TO SKIP LINES BEGINNING WITH THE STRING /*
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c
+      CHARACTER  STRING*80,LEADER*2
+c
+      DATA LEADER/'/*'/
+c
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c
+   10 READ(IUNIT,1000,END=20) STRING
+      call testchar (NCHAR, STRING)
+      II = NCHAR
+      IF(II.EQ.0) GOTO 10
+c
+      IF (INDEX(STRING,LEADER).EQ.1) THEN
+         GOTO 10
+      ELSE
+         BACKSPACE (IUNIT)
+      ENDIF
+c
+ 1000 FORMAT(A80)
+c
+   20 RETURN
+      END
+C
+      SUBROUTINE TESTCHAR (NCHAR, STRING)
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+C  DETERMINES THE MINIMUM NONBLANK LENGTH OF A STRING
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c
+      CHARACTER*(*) STRING
+      CHARACTER BLANK
+c
+      DATA BLANK/' '/
+c
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c
+      NMAX=LEN(STRING)
+      NCHAR=0
+c
+      DO 10 I=1,NMAX
+         ITEST=NMAX-I+1
+         IF(STRING(ITEST:ITEST).NE.BLANK) THEN
+           NCHAR=ITEST
+           RETURN
+         ENDIF
+10    CONTINUE
+c
+      RETURN
+      END
+

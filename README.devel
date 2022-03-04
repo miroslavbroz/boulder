@@ -1,0 +1,23 @@
+
+pi-scaling for projectile->crater scaling
+
+output of crater.out
+
+Sevecek (2017) parametric relations.
+
+families_ob.out was temporarily switched off
+
+Further modification of Mlf(Q/Qstar) ... see Mlf.plt!
+
+--
+
+Parametric relations from Morbidelli etal. (2009) do NOT fit
+well low-energetic impacts! They were thus modified according
+to our (few) SPH simulations (see Mlf.plt)...
+
+Q/Qstar is now also written in families.out output.
+
+The same as ../boulder_simplex_FAMS7_YARKO, but with
+improved pop_decay.f and yarko_decay.f which both enable
+very slooow decays (fractional, Monte-Carlo).
+
