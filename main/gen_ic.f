@@ -39,7 +39,7 @@ c... Read, convert and write into Boulder input file
          read(11,*)nbins(j),rho(j),rmin
          trash_bin_marr=4.d0/3.d0*dpi*rho(j)*(rmin*1.d5)**3 / mfactor
          write(31,8488)axe,daxe,nbins(j),trash_bin_marr,0.
- 8488    format(2(1x,f15.7),1x,i5,2(1x,e15.7))
+ 8488    format(2(1x,f15.7),1x,i5,2(1x,e22.16))
          do jj=1,nbins (j)
             read(11,*)iden,radius,nnall
             sarr(j,jj)=radius*1.d5 
