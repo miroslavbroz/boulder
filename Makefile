@@ -77,12 +77,12 @@ inc = \
   simplex/cb_sfd.inc \
   simplex/cb_itmax.inc \
 
-all: main/boulder main/gen_sfd main/gen_sfd4 main/gen_sfd5 main/gen_ic main/simplex main/chi2
+all: main/boulder main/gen_sfd3 main/gen_sfd4 main/gen_sfd5 main/gen_ic main/simplex main/chi2
 
 main/boulder: main/boulder.f $(obj) $(objc) $(inc)
 	$(f77) $(opt) $(obj) $(objc) -o $@ $< $(libs)
 
-main/gen_sfd: main/gen_sfd.f $(obj) $(objc) $(inc)
+main/gen_sfd3: main/gen_sfd3.f $(obj) $(objc) $(inc)
 	$(f77) $(opt) $(obj) $(objc) -o $@ $< $(libs)
 
 main/gen_sfd4: main/gen_sfd4.f $(obj) $(objc) $(inc)

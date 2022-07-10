@@ -155,7 +155,7 @@ ccc
 
       call read_param(dtcol,dtmax,t0,tend,dtout)
 
-      call read_phys_par(Nanuli, rho,Q0,a_benz,BB,b_benz,rho_bas,q_fact)
+      call read_phys_par(Nanuli,rho,Q0,a_benz,BB,b_benz,rho_bas,q_fact)
 
       if (Pint_tdepend) then
         call read_collprob_time(Nanuli,Pint_n,Pint_time,Pint_arr,
@@ -279,7 +279,7 @@ ccc
 
 c ... decay due to the Yarkovsky effect
       call yarko_decay(Nanuli,yarko_n,yarko_r,yarko_tau,
-     :  trans_m,dtcol,npop,mpop,marr,sarr)
+     :  trans_m,dtcol,nbins,marr,sarr,npop,mpop)
 
 c ... Calculate new Pint and vrel if neccessary
       if (Pint_tdepend) then

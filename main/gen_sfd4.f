@@ -140,7 +140,8 @@ c... Calculate total mass
 
 c...  Write things out 
       write(*,8848)nbin,rho1,rad(1),totm
- 8848 format(i5,2(1x,f15.7),1x,e15.7)
+ 8848 format(i5,3(1x,e22.16))
+
       do i=1,nbin
         write(*,*)i,rad(i),numb_int(i)
       end do

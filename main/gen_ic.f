@@ -34,6 +34,10 @@ c      read(5,*,iostat=ios) axe
 c... Read, convert and write into Boulder input file
       open(unit=31,file=boulder_name, status = 'unknown')
       write(31,*) Nanuli
+      if (Nanuli.gt.Manuli) then
+        write(*,*) 'Error: Nanuli.gt.Manuli = ', Manuli
+        stop
+      endif
       do j=1,Nanuli
          open(11,file=filename(j),status='old')
          read(11,*)nbins(j),rho(j),rmin

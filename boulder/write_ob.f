@@ -14,15 +14,11 @@ c write_ob.f
 
 c (a) output SFDs
       open(unit=2,file=outname,position='append')
-ccc      write(2,*) t0,total_mass_new
-ccc      write(2,*) Nanuli
       do i=1,Nanuli
-ccc       write(2,*) axe(i),delta_a(i),nbins(i),marr(i,0),mpop(i,0)
-       write(2,*) t,i,nbins(i)
-       do jj=1,nbins(i)
-        write(2,*) marr(i,jj),sarr(i,jj),mpop(i,jj)
-ccc        write(2,*) ecc(i,jj),inc(i,jj)
-       enddo
+        write(2,*) t,i,nbins(i)
+        do jj=1,nbins(i)
+          write(2,*) marr(i,jj),sarr(i,jj),mpop(i,jj)
+        enddo
       enddo
       close(2)
 

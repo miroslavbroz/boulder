@@ -7,7 +7,7 @@ c   Manuli is the maximum number of anuli
 c   BINMAX is the maximum number of positive mass bins in each anulus
 c   BINNEG is the maximum number of `negative' mass bins used in the extrapolation of the size distribution at the small-size end to avoid truncature effects
 c   Ndata is the number of informations carried by the npop vector
-      parameter(Manuli=3,BINMAX=200,BINNEG=-30,Ndata=1) 
+      parameter(Manuli=4,BINMAX=200,BINNEG=-30,Ndata=1) 
 
 c   some physical constants
       real*8 msun               ! G*M_sun in Swift units

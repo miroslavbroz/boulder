@@ -177,8 +177,8 @@ c output the families (to a file or to an array)
          endif
 
 c output the craters
-c j ... target pop.
 c i ... projectile
+c j ... target pop.
 c k ... bin
 c l ... another bin
          call write_craters(j,time,sarr(j,k),sarr(i,l),ncoll_kl,
