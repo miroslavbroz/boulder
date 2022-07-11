@@ -296,7 +296,7 @@ ccc
 
 c ... decay due to the Yarkovsky effect
       call yarko_decay(Nanuli,yarko_n,yarko_r,yarko_tau,
-     :  trans_m,dtcol,nbins,marr,sarr,npop,mpop)
+     :  trans_m,dtcol,nbinneg,nbins,marr,sarr,npop,mpop)
 
 c ... Calculate new Pint and vrel if neccessary
       if (Pint_tdepend) then

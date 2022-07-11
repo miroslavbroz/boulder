@@ -11,7 +11,7 @@ c   tau = Delta_a / (da/dt)
 c   N/N0 = exp(-t/tau)
 
       subroutine yarko_decay(Nanuli,yarko_n,yarko_r,yarko_tau,
-     :  trans_m,dt,nbins,marr,sarr,npop,mpop)
+     :  trans_m,dt,nbinneg,nbins,marr,sarr,npop,mpop)
 
       include 'ucrm3.4.inc'
       include 'yarko.inc'
@@ -19,7 +19,7 @@ c   N/N0 = exp(-t/tau)
 
       integer Nanuli
       real*8 dt
-      integer nbins(Manuli)
+      integer nbinneg(Manuli),nbins(Manuli)
       real*8 marr(Manuli,BINNEG:BINMAX)
       real*8 sarr(Manuli,BINNEG:BINMAX)
       real*8 npop(Manuli,BINNEG:BINMAX,Ndata)
@@ -33,7 +33,7 @@ c functions
       real*8 linterp, ran3
 
       do j = 1, Nanuli
-        do jj = BINNEG, BINMAX
+        do jj = -nbinneg(j), nbins(j)
 
           if (npop(j,jj,1).gt.0.d0) then
 
@@ -67,9 +67,11 @@ c ... account for really slooow decay rates)
 
 c ... transport bodies to other populations according to the matrix
 c ... increase the number of bins if necessary!
+c ... moreover, the bins are different for populations!
 
             do k = 1,Nanuli
-              if (trans_m(j,k).ne.0.d0) then
+              if ((n.gt.0.d0).and.(trans_m(j,k).ne.0.d0)) then
+                
                 npop(k,jj,1) = dint(npop(k,jj,1) + n*trans_m(j,k)+0.5d0)
                 if (jj.gt.0) mpop(k,jj) = marr(k,jj)*npop(k,jj,1)
                 if (jj.gt.nbins(k)) then

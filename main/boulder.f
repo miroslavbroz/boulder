@@ -24,9 +24,10 @@ c mass array, size array
 c total mass array
       real*8 mpop(Manuli,0:BINMAX)
 c number of particles array
-      real*8 npop(Manuli,BINNEG:BINMAX,Ndata)! the Ndata vector is for 
-c additional data. Ndata=1 is the populaiton in each bin. the only
-c currently used orbital parameters arrays
+c the Ndata vector is for additional data
+c Ndata=1 is the populaiton in each bin
+      real*8 npop(Manuli,BINNEG:BINMAX,Ndata)
+c orbital parameters arrays
       real*8 ecc(Manuli,BINNEG:BINMAX),inc(Manuli,BINNEG:BINMAX)
       real*8 axe(Manuli),delta_a(Manuli)
 c number of anuli, mass bins, positive and negative
@@ -56,7 +57,7 @@ c auxiliary stuff
       real*8 xi
       real*8 ran3
 
-c bottke changes
+c bottke's changes
       integer ios
       character*80 boulder_name, outname
 
@@ -68,70 +69,69 @@ c mira's additions
       integer Pint_n
       logical Pint_tdepend
 
+c Read job parameters from 'boulder.in' file ...................(begin)
 
-c ...................................................................
-ccc
-c job parameters from 'boulder.in' file
-ccc
       open(1,file='boulder.in',status='old')
 c (a) input SFDs filename
-      write (6, '('' Enter BOULDER input file > ''$)')
-      read  (1, *, iostat = ios) boulder_name
-      if (ios .ne. 0) then
-       write (6, *) ' Error 1 ', ios, ' Try again '
-       stop
+      read(1,*,iostat=ios) boulder_name
+      if (ios.ne.0) then
+        write(6,*) ' Error reading boulder_name'
+        stop
       endif
+      write(*,*) '# boulder_name = ', boulder_name
 c (b) output SFDs filename
-      write (6, '('' Enter BOULDER output file > ''$)')
-      read  (1, *, iostat = ios) outname
-      if (ios .ne. 0) then
-       write (6, *) ' Error 2 ', ios, ' Try again '
-       stop
+      read(1,*,iostat=ios) outname
+      if (ios.ne.0) then
+        write(6,*) ' Error reading outname'
+        stop
       endif
+      write(*,*) '# outname = ', outname
 c (c) random seed
-      read (1, *, iostat = ios) idum0
-      if ((ios .ne. 0).or.(idum0.ge.0)) then
-       write (6, *) ' Error reading (negative) idum0'
-       stop
+      read(1,*,iostat=ios) idum0
+      if ((ios.ne.0).or.(idum0.ge.0)) then
+        write (6,*) ' Error reading idum0 (negative)'
+        stop
       endif
       write(*,*) '# idum0 = ', idum0
 c (d) whether to use time-dependent Pint and vrel
-      read (1, *, iostat = ios) Pint_tdepend
-      if (ios .ne. 0) then
-       write (6, *) ' Error reading Pint_tdepend'
-       stop
+      read(1,*,iostat=ios) Pint_tdepend
+      if (ios.ne.0) then
+        write(6,*) ' Error reading Pint_tdepend'
+        stop
       endif
       write(*,*) '# Pint_tdepend = ', Pint_tdepend
 c (e) whether to use time-dependent Pint and vrel
-      read (1, *, iostat = ios) mfactor
-      if (ios .ne. 0) then
-       write (6, *) ' Error reading mfactor'
-       stop
+      read(1,*,iostat=ios) mfactor
+      if (ios.ne.0) then
+        write(6,*) ' Error reading mfactor'
+        stop
       endif
       write(*,*) '# mfactor = ', mfactor
 c (f) what disruptions to output explicitly
-      read (1, *, iostat = ios) family_lfpb_min,
-     :  family_lfpb_max, family_dpb_treshold, family_dlf_treshold
-      if (ios .ne. 0) then
-       write (6, *) ' Error reading family_lfpb_min ',
-     :   ' family_lfpb_max family_dpb_treshold family_dlf_treshold'
-       stop
+      read (1,*,iostat=ios) family_lfpb_min, family_lfpb_max,
+     :  family_dpb_treshold, family_dlf_treshold
+      if (ios.ne.0) then
+        write (6,*) ' Error reading family_lfpb_min family_lfpb_max',
+     :    ' family_dpb_treshold family_dlf_treshold'
+        stop
       endif
       write(*,*) '# family_lfpb_min = ', family_lfpb_min
       write(*,*) '# family_lfpb_max = ', family_lfpb_max
-      write(*,*) '# family_dpb_treshold = ', family_dpb_treshold
-      write(*,*) '# family_dlf_treshold = ', family_dlf_treshold
+      write(*,*) '# family_dpb_treshold = ', family_dpb_treshold, ' cm'
+      write(*,*) '# family_dlf_treshold = ', family_dlf_treshold, ' cm'
 c (g) what craters to output
-      read (1, *, iostat = ios) crater_dpb_min, crater_dc_min
-      if (ios .ne. 0) then
-       write (6, *) ' Error reading crater_dpb_min crater_dc_min'
-       stop
+      read (1,*,iostat=ios) crater_dpb_min, crater_dc_min
+      if (ios.ne.0) then
+        write(6,*) ' Error reading crater_dpb_min crater_dc_min'
+        stop
       endif
-      write(*,*) '# crater_dpb_min = ', crater_dpb_min
-      write(*,*) '# crater_dc_max = ', crater_dc_min
+      write(*,*) '# crater_dpb_min = ', crater_dpb_min, ' cm'
+      write(*,*) '# crater_dc_max = ', crater_dc_min, ' cm'
       close(1)
 
-c ... some initializations and checks on input/output files
+c Read job parameters from 'boulder.in' file .....................(end)
+
+c ... some initializations and checks of input/output files
       i1st=0
       dbg=.true.
       write_rather_save=.true.
@@ -140,16 +140,14 @@ c ... some initializations and checks on input/output files
       write(*,*) "# idum0 = ", idum0
 
       open(unit=1,file=outname,status='new',iostat = ios)
-      if (ios .ne. 0) then
-       write (6, *) ' Pre-existing output file!'
-       write (6, *) ' Make sure you want to use it'
-       stop
+      if (ios.ne.0) then
+        write (6,*) ' Error pre-existing output file!'
+        stop
       endif
       close(1)
 
-ccc
-c  Read data files ...........................................(begin)
-ccc
+c Read data files ...............................................(begin)
+
       call read_ib(boulder_name, Nanuli,axe,delta_a,nbins,marr,mpop,
      :  sarr,ecc,inc,npop)
 
@@ -170,7 +168,9 @@ ccc
 
       call read_trans(Nanuli,trans_m)
 
-! now do the interpolation to find population at t0
+c Read data files .................................................(end)
+
+c Interpolation to find population at t0
       call pop_decay_interp(Nanuli,tpart,npart,npart_n,t0,npart_init)
 
       if (Pint_tdepend) then
@@ -178,152 +178,154 @@ ccc
      :    Pint_n,t0)
       endif
 
-! check the input, generate empty arrays etc.
+c Check the input, generate empty arrays, etc.
       do j = 1,Nanuli
-       call ucrm_update_arrs(i1st,j,nbinneg(j),nbins(j),marr,sarr,
-     &                       mpop,npop,axe,delta_a,ecc,inc)
+        call ucrm_update_arrs(i1st,j,nbinneg(j),nbins(j),marr,sarr,
+     :    mpop,npop,axe,delta_a,ecc,inc)
       enddo
       total_mass_new = 0.d0
       do j = 1,Nanuli
-       do jj = 0,nbins(j) 
-        total_mass_new = total_mass_new + mpop(j,jj)
-       enddo
+        do jj = 0,nbins(j) 
+          total_mass_new = total_mass_new + mpop(j,jj)
+        enddo
       enddo
 
-ccc
-c Output of the initial condition ..........................(begin)
-ccc
+c Output of the initial conditions
       call write_ob(outname,Nanuli,t0,nbins,marr,sarr,mpop)
 
-ccc
-c Big time loop ..................................................(begin)
-ccc
-      time=t0
-      tout=t0+dtout
+c Big time loop .................................................(begin)
 
-1000  continue                           ! timestep loop
-      write(*,*)'dt,time:',dtcol,time
+      time = t0
+      tout = t0+dtout
 
-c timestep initializations:
+1000  continue
+      write(*,*) 'time  = ', time, ' y = ', time/1.d6, ' My'
+      write(*,*) 'dtcol = ', dtcol, ' y = ', dtcol/1.d6, ' My'
+
+c timestep initialization
       dtstern=1.d10
-c zero the global arrays that accumulate debris exchange and e,i changes 
-c and also the binaries arrays into fake ones...
-      do j=1,Nanuli
-       do jj = 0,nbins(j)
-        mpop_change_tot(j,jj) = 0.d0
-        npop_change_tot(j,jj,1) = 0.d0
-        fe_tot(j,jj) = 0.d0
-        fi_tot(j,jj) = 0.d0
-       enddo
+
+c Zero the global arrays that accumulate debris exchange and e,i changes 
+c and also the binaries arrays into fake ones.
+      do j = 1,Nanuli
+        do jj = 0,nbins(j)
+          mpop_change_tot(j,jj) = 0.d0
+          npop_change_tot(j,jj,1) = 0.d0
+          fe_tot(j,jj) = 0.d0
+          fi_tot(j,jj) = 0.d0
+        enddo
       enddo
             
-c ... Loop over all pairs of tracers: i is the impactor population
-c     j is the target population ..........................(begin)
-      do i=1,Nanuli  
-       do j=1,Nanuli
+c Loop over all pairs of tracers ................................(begin)
+
+c i .. impactor population
+c j .. target population
+c k .. target bins
+c l .. impactor bins
+
+      do i = 1,Nanuli  
+        do j = 1,Nanuli
             
-c ... Attempt one collisional step with timestep dtcol on the i,j pair  
-c ... here we OUTPUT families too
-        call ucrm_step_ij(i1st,time,dtcol,i,j,nbinneg,nbins,
-     &                   marr,sarr,mpop,npop,axe,ecc,inc,delta_a,
-     &                   mpop_change,npop_change,fe,fi,dt_est,l_iso_tmp)
-        if (i.eq.j) l_iso(j)=l_iso_tmp ! save bin number for isolated objects
-c ... first check. Internal subroutine step needs to be not smaller than dtcol
-        if (dt_est.lt.dtcol) then
-         dtcol=dt_est
-         write(*,*)'dt_est smaller than dt_coll: ',dt_est
-         goto 1000
-        endif
-c  update population numbers and masses. 
-c  Returns  appropriate timestep
-        call pop_change(i,j,nbins,mpop,npop,
-     &     mpop_change,npop_change,mpop_change_tot,npop_change_tot,
-     &     fe,fi,fe_tot,fi_tot,dtcol,dtstern,ifail)
-         if (ifail.eq.1) goto 1000
-       enddo                 ! over j
-      enddo                  ! over i
-c ... Loop over all pairs of tracers: i is the impactor population
-c     j is the target population ............................(end)
+c ... Attempt one collisional step with timestep dtcol on the i,j pair.
+c ... Here we OUTPUT families too!
+          call ucrm_step_ij(i1st,time,dtcol,i,j,nbinneg,nbins,
+     :      marr,sarr,mpop,npop,axe,ecc,inc,delta_a,
+     :      mpop_change,npop_change,fe,fi,dt_est,l_iso_tmp)
+
+c ... Save bin number for isolated objects.
+          if (i.eq.j) l_iso(j)=l_iso_tmp
+
+c ... First check. Internal step needs to be NOT smaller than dtcol.
+          if (dt_est.lt.dtcol) then
+            dtcol=dt_est
+            if (dbg) then
+              write(*,*) '# dt_est = ', dt_est, ' y too small'
+            endif
+            goto 1000
+          endif
+
+c ... Update population numbers and masses. 
+c ... Returns appropriate timestep.
+          call pop_change(i,j,nbins,mpop,npop,
+     :      mpop_change,npop_change,mpop_change_tot,npop_change_tot,
+     :      fe,fi,fe_tot,fi_tot,dtcol,dtstern,ifail)
+
+          if (ifail.eq.1) goto 1000
+
+        enddo  ! over j
+      enddo  ! over i
+
+c Loop over all pairs of tracers ..................................(end)
 
 c ... Check that no population or mass bin is negative. 
-c     Return appropriate timestep
+c ... Returns appropriate timestep.
       call pop_check(Nanuli,nbins,mpop,npop,
-     &     mpop_change_tot,npop_change_tot,dtcol,dtstern,ifail)
+     :  mpop_change_tot,npop_change_tot,dtcol,dtstern,ifail)
+
       if (ifail.eq.1) goto 1000
 
-c ... Now we can update all variables; the step has been accepted
+c ... Now we can update all variables; the step has been accepted.
       call update_pops(Nanuli,nbins,mpop,npop,ecc,inc,
-     &                 mpop_change_tot,npop_change_tot,fe_tot,fi_tot)
+     :  mpop_change_tot,npop_change_tot,fe_tot,fi_tot)
 
-c ... Recompute marrs and sarrs from new mass and mpop (moving bins)
-c ... this subroutine makes sure that npop is integer.
-c ... Also checks for problems and re-arrange marrs 
+c ... Recompute marrs and sarrs from new mass and mpop (moving bins).
+c ... This subroutine makes sure that npop is integer.
+c ... Also checks for problems and re-arrange marrs.
       do j = 1,Nanuli
-       call ucrm_update_arrs(i1st,j,nbinneg(j),nbins(j),marr,sarr,
-     &                       mpop,npop,axe,delta_a,ecc,inc)
+        call ucrm_update_arrs(i1st,j,nbinneg(j),nbins(j),marr,sarr,
+     :    mpop,npop,axe,delta_a,ecc,inc)
       enddo   
 
-c ... Advance time after step has been accepted
-      te=time+dtcol
+c ... Advance time after step has been accepted.
+      te = time+dtcol
 
-ccc
-c Now the dynamical decay is handled ............................(begin)
-ccc
+c ... Now dynamical decay is handled.
       call pop_decay_interp(Nanuli,tpart,npart,npart_n,te,npart_end)
 
       call pop_decay(Nanuli,nbinneg,nbins,npart_init,npart_end,
      :  npop,mpop,marr)
-ccc
-c Now the dynamical decay is handled ..............................(end)
-ccc
 
-c ... decay due to the Yarkovsky effect
+c ... Decay due to the Yarkovsky effect.
       call yarko_decay(Nanuli,yarko_n,yarko_r,yarko_tau,
-     :  trans_m,dtcol,nbins,marr,sarr,npop,mpop)
+     :  trans_m,dtcol,nbinneg,nbins,marr,sarr,npop,mpop)
 
-c ... Calculate new Pint and vrel if neccessary
+c ... Calculate new Pint and vrel (if neccessary),
       if (Pint_tdepend) then
         call coll_rate_interp(Nanuli,Pint_time,Pint_arr,vrel_arr,
      :    Pint_n,te)
       endif
 
-c ... Calculate the new total mass   
+c ... Calculate the new total mass.
       total_mass_new = 0.d0
       do j = 1,Nanuli
-       do jj = 0,nbins(j)
-        total_mass_new = total_mass_new + mpop(j,jj)
-       enddo
+        do jj = 0,nbins(j)
+          total_mass_new = total_mass_new + mpop(j,jj)
+        enddo
       enddo
-      time=te ! time which we are at
 
-ccc
-c  Output data to file ..........................................(begin)
-ccc
-      if (time.ge.tout) then  ! here we OUTPUT
+      time = te
 
-       call write_ob(outname,Nanuli,time,nbins,marr,sarr,mpop)
-
-c ... Set the new output time
-       tout=time+dtout        
+c ... Output data to file.
+      if (time.ge.tout) then
+        call write_ob(outname,Nanuli,time,nbins,marr,sarr,mpop)
+        tout = time+dtout        
       endif
 
-      if(time.ge.tend)then
-       write(*,*)'exiting at time=',time
-       close(11)
-       stop                                  !! done!!
-      else
-c select the minimum of three stepsizes
-       write(*,*) 'stepsizes:',dt_est,dtstern
-       dtcol=min(dt_est/1.5d0,dtstern)
-       if (dtcol.gt.dtmax) dtcol = dtmax ! added by Miroslav Broz, Jun 20th 2013
-       if (time+dtcol.gt.tout) dtcol=tout-time
-       write(*,*) ''
-c       stop  ! dbg
-       goto 1000
+c ... Select the minimum of three stepsizes.
+      if (time.lt.tend) then
+        dtcol=min(dt_est/1.5d0,dtstern)
+        if (dtcol.gt.dtmax) dtcol = dtmax
+        if (time+dtcol.gt.tout) dtcol=tout-time
+        write(*,*) '.'
+        goto 1000
       endif
-ccc
-c Big time loop ....................................................(end)
-ccc
+
+c Big time loop ...................................................(end)
+
+c Done!
+      write(*,*) 'time = ', time, ' y = ', time/1.d6, ' My (exiting)'
+      close(11)
+      stop
 
       end
 

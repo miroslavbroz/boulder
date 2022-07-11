@@ -33,7 +33,7 @@ c     internals
             if(dtstern_tmp.lt.dtcol*tollS)then
                dtcol=dtstern
                if (dbg) then
-                 write(*,*)'# dtstern too small:',dtstern
+                 write(*,*)'# dtstern = ',dtstern,' y too small'
                endif
                ifail=1
                return
@@ -46,7 +46,7 @@ c     internals
             if(dtstern_tmp.lt.dtcol*tollS)then
                dtcol=dtstern
                if (dbg) then
-                 write(*,*)'# dtstern too small:',dtstern
+                 write(*,*)'# dtstern = ',dtstern,' y too small'
                endif
                ifail=1
                return
@@ -60,7 +60,7 @@ c     internals
             if(dtstern_tmp.lt.dtcol*tollS)then
                dtcol=dtstern
                if (dbg) then
-                 write(*,*)'# dtstern too small:',dtstern
+                 write(*,*)'# dtstern = ',dtstern,' y too small'
                endif
                ifail=1
                return
@@ -73,7 +73,7 @@ c     internals
             if(dtstern_tmp.lt.dtcol*tollS)then
                dtcol=dtstern
                if (dbg) then
-                 write(*,*)'# dtstern too small:',dtstern
+                 write(*,*)'# dtstern = ',dtstern,' y too small'
                endif
                ifail=1
                return
