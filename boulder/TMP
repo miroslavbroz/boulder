@@ -1,3 +1,37 @@
+!      if (m.lt.marr(k,kk)) then
+!        write(*,*) 'Error: m = ',m,' .lt. marr = ', marr(k,kk)
+!        stop
+!      endif
+
+      write(*,*) 'kk = ', kk
+      write(*,*) 'm = ', m
+      write(*,*) 'marr(',k,',',kk,') = ', marr(k,kk)
+      write(*,*) 'marr(',k,',',kk,') = ', marr(k,kk)
+
+
+          do jj = -nbinneg(j),nbins(j)
+c find the closest bin
+                kk = -nbinneg(k)
+                do while ((kk.lt.nbins(k))
+     :            .and.(marr(k,kk).lt.marr(j,jj)))
+                  kk = kk+1
+                enddo
+c join bins 
+                if (marr(k,kk).ne.marr(j,jj)) then
+                  write(*,*) 'marr(',k,',',kk-1,') = ', marr(k,kk-1)
+                  write(*,*) 'marr(',k,',',kk,') = ', marr(k,kk)
+                  write(*,*) 'marr(',j,',',jj,') = ', marr(j,jj)
+                  stop
+                endif
+
+                npop(k,jj,1) = dint(npop(k,jj,1) + n*trans_m(j,k)+0.5d0)
+                if (jj.gt.0) mpop(k,jj) = marr(k,jj)*npop(k,jj,1)
+                if (jj.gt.nbins(k)) then
+                  nbins(k) = jj
+                  marr(k,jj) = marr(j,jj)
+                  sarr(k,jj) = sarr(j,jj)
+                endif
+
         write(*,*) 'Pint(', i, ',', j, ') = ', Pint(i,j)
         write(*,*) 'vrel(', i, ',', j, ') = ', vrel(i,j)
 

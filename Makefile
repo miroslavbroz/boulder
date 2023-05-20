@@ -1,12 +1,12 @@
 # Makefile
-# Makefile for simplex and chi2.
+# Makefile for boulder, chi2 and simplex.
 # Miroslav Broz (miroslav.broz@email.cz), Mar 13th 2011
 
 f77 = gfortran
 cc = gcc
 
-#opt = -O -pg -fbacktrace -Wconversion -Wsurprising -Wunderflow
-opt = -O3
+#opt = -O3 -pg -fbacktrace -Wconversion -Wsurprising -Wunderflow
+opt = -O3 -pg
 
 libs = -L.
 
@@ -23,6 +23,7 @@ obj = \
   boulder/pop_check.o \
   boulder/pop_decay.o \
   boulder/pop_decay_interp.o \
+  boulder/pop_merge.o \
   boulder/read_collprob.o \
   boulder/read_collprob_time.o \
   boulder/read_ib.o \

@@ -1,0 +1,7 @@
+/*
+/* decay rates of populations
+/*
+/* time [yr]     pop(1)   pop(2)
+/*
+      0.00000    1.0      1.0
+  1.00000e+10    1.0      1.0

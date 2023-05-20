@@ -1,0 +1,13 @@
+/* 
+/*   Q*_D PARAMETERS
+/*
+/*   bulk rho  Q0    a       B     b   rho_Q*, dividing factor 
+/*
+/*   Reference: Benz and Asphaug (1999)
+/*
+/*   MB, monolith, basalt, 5 km/s, modified low Q at 100 m (cf. YORP)
+/*   Flora, monolith, basalt, 5 km/s, larger density, modified low Q
+/*
+	3.0d0   9.0d7 -0.53d0 0.5d0 1.36d0 3.0d0   1.0
+	3.04d0  9.0d7 -0.53d0 0.5d0 1.36d0 3.04d0  1.0
+

@@ -1,0 +1,18 @@
+/*
+/* P_i and Impact Velocity of Projectile (i) on Target (j)
+/*
+/* i = impactor
+/* j = target body
+/*
+/*      do i=1,Nanuli
+/*         do j=1,Nanuli
+/*            read(1,*)Pint(i,j),vrel(i,j)
+/*         enddo
+/*      enddo
+/*
+/*
+       2.86e-18         5.77     MB vs MB
+       2.73e-18         5.66     MB vs Flora
+       2.73e-18         5.66     Flora vs MB
+      15.50e-18         4.23     Flora vs Flora
+

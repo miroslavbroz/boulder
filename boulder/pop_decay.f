@@ -51,7 +51,7 @@ c         ...
 
           npart_init(j,jj) = npart_init(j,jj)*(1.d0-fdec)
 
-          if (jj.gt.0) mpop(j,jj)=marr(j,jj)*npop(j,jj,1) !done to preserve marr
+          if (jj.gt.0) mpop(j,jj)=marr(j,jj)*npop(j,jj,1)  ! to preserve marr
 
         enddo  ! jj SFD bins
       enddo  ! j  (anuli)

@@ -25,15 +25,19 @@ c   N/N0 = exp(-t/tau)
       real*8 npop(Manuli,BINNEG:BINMAX,Ndata)
       real*8 mpop(Manuli,0:BINMAX)
 
-      integer j,jj,k,nint
+      integer j,jj,k,kk,nint
       real*8 tau, fdec, n, n_integer, n_remainder, chance
+      real*8 deb_spect_m(BINNEG:BINMAX),deb_spect_n(BINNEG:BINMAX)
       logical extra
 
 c functions
       real*8 linterp, ran3
 
-      do j = 1, Nanuli
-        do jj = -nbinneg(j), nbins(j)
+      do j = 1,Nanuli
+        do jj = -nbinneg(j),nbins(j)
+
+          deb_spect_m(jj) = marr(j,jj)
+          deb_spect_n(jj) = 0.d0
 
           if (npop(j,jj,1).gt.0.d0) then
 
@@ -63,29 +67,33 @@ c ... account for really slooow decay rates)
 
             npop(j,jj,1) = dint(npop(j,jj,1) - n + 0.5d0)
 
-            if (jj.gt.0) mpop(j,jj) = marr(j,jj)*npop(j,jj,1) ! to preserve marr
+            if (jj.ge.0) mpop(j,jj) = marr(j,jj)*npop(j,jj,1)  ! to conserve mass
+
+            deb_spect_n(jj) = n
+
+          endif  ! npop.gt.0
+
+        enddo  ! jj (bins)
 
 c ... transport bodies to other populations according to the matrix
+c ... the bins are different for each population
 c ... increase the number of bins if necessary!
-c ... moreover, the bins are different for populations!
 
-            do k = 1,Nanuli
-              if ((n.gt.0.d0).and.(trans_m(j,k).ne.0.d0)) then
-                
-                npop(k,jj,1) = dint(npop(k,jj,1) + n*trans_m(j,k)+0.5d0)
-                if (jj.gt.0) mpop(k,jj) = marr(k,jj)*npop(k,jj,1)
-                if (jj.gt.nbins(k)) then
-                  nbins(k) = jj
-                  marr(k,jj) = marr(j,jj)
-                  sarr(k,jj) = sarr(j,jj)
-                endif
+        do k = 1,Nanuli
+          if (trans_m(j,k).ne.0.d0) then
+            kk = -nbinneg(k)+1
+            do jj = -nbinneg(j),nbins(j)
+              if (deb_spect_n(jj).gt.0.d0) then
+
+                call pop_merge(k,kk,nbins,marr,sarr,npop,mpop,
+     :            deb_spect_m(jj),deb_spect_n(jj)*trans_m(j,k))
+
               endif
-            enddo
+            enddo  ! jj (bins)
+          endif
+        enddo  ! k (anuli)
 
-          endif   ! npop.gt.0
-
-        enddo     ! jj (bins)
-      enddo       ! j  (anuli)
+      enddo  ! j (anuli)
 
       return
       end
