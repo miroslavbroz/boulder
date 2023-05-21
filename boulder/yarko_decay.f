@@ -31,7 +31,7 @@ c   N/N0 = exp(-t/tau)
       logical extra
 
 c functions
-      real*8 linterp, ran3
+      real*8 loginterp, ran3
 
       do j = 1,Nanuli
         do jj = -nbinneg(j),nbins(j)
@@ -41,7 +41,7 @@ c functions
 
           if (npop(j,jj,1).gt.0.d0) then
 
-            tau = linterp(yarko_r(1,j),yarko_tau(1,j),yarko_n(j),
+            tau = loginterp(yarko_r(1,j),yarko_tau(1,j),yarko_n(j),
      :        sarr(j,jj),extra)
             if (extra) then
               write(*,*) '# yarko_decay: extrapolation is not allowed!'
